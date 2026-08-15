@@ -1,7 +1,8 @@
 --[[
     GravityHub - Lamont buy test
-    Misma llegada que en PC: se queda EN la plataforma a Y de ShopPosition
-    (no se destruye al llegar, por eso no se cae)
+    Viaje: bajada ~3s, traslado medio, subida suave
+    Dialogo: 1 click cada 1s hasta que abra Shop
+    Shop: 1 de cada + EXIT
 ]]
 
 local Players = game:GetService("Players")
@@ -13,10 +14,9 @@ local GuiService = game:GetService("GuiService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Misma posicion que el script de PC
 local ShopPosition = CFrame.new(511.364, 3.575, 597.820)
 local SafeHeight = -8
-local TravelTime = 55
+local TravelTime = 28 -- medio (no full lento ni full rapido)
 
 local platform = nil
 local stayConn = nil
@@ -46,7 +46,7 @@ local function zeroVel(hrp)
     end)
 end
 
--- ==================== LOOK AT (como PC) ====================
+-- ==================== LOOK AT ====================
 local function stopLookAt()
     if lookConn then lookConn:Disconnect() lookConn = nil end
 end
@@ -74,7 +74,7 @@ local function startLookAt(pos)
     end)
 end
 
--- ==================== PLATFORM (igual que PC) ====================
+-- ==================== PLATFORM ====================
 local function destroyPlatform()
     if stayConn then stayConn:Disconnect() stayConn = nil end
     if platform then pcall(function() platform:Destroy() end) platform = nil end
@@ -101,7 +101,6 @@ local function ensurePlatform()
     platform.CFrame = CFrame.new(pos.X, pos.Y - 4, pos.Z)
     platform.Parent = workspace
 
-    -- Igual que PC: HRP siempre a platform.Y + 4.3
     stayConn = RunService.Heartbeat:Connect(function()
         local h = getHRP()
         if h and platform and platform.Parent then
@@ -113,22 +112,23 @@ local function ensurePlatform()
     return true
 end
 
--- Misma logica que SlowTravelUnderMap del PC
 local function travelToShop()
     if not ensurePlatform() then return false end
     local hrp = getHRP()
     if not hrp then return false end
 
     local target = ShopPosition.Position
-    local destY = target.Y -- 3.575 como en PC
+    local destY = target.Y
 
+    -- Bajada ~3s
     notify("Bajando...")
-    local down = TweenService:Create(platform, TweenInfo.new(5.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+    local down = TweenService:Create(platform, TweenInfo.new(3.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
         CFrame = CFrame.new(platform.Position.X, SafeHeight, platform.Position.Z)
     })
     down:Play()
     down.Completed:Wait()
 
+    -- Traslado medio
     notify("Viajando a tienda...")
     local move = TweenService:Create(platform, TweenInfo.new(TravelTime, Enum.EasingStyle.Linear), {
         CFrame = CFrame.new(target.X, SafeHeight, target.Z)
@@ -136,18 +136,17 @@ local function travelToShop()
     move:Play()
     move.Completed:Wait()
 
+    -- Subida
     notify("Subiendo...")
-    -- Igual PC: plataforma a destY - 4.3  => personaje a destY
-    local up = TweenService:Create(platform, TweenInfo.new(7.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    local up = TweenService:Create(platform, TweenInfo.new(4.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         CFrame = CFrame.new(target.X, destY - 4.3, target.Z)
     })
     up:Play()
     up.Completed:Wait()
     task.wait(0.3)
 
-    -- NO destruir plataforma (en PC tampoco se destruye al comprar)
-    -- El stayConn te mantiene en Y = destY encima de la plataforma
-    notify("En posicion de tienda (como PC)")
+    -- NO destruir plataforma (como PC)
+    notify("En posicion de tienda")
     return true
 end
 
@@ -261,29 +260,54 @@ local function waitFor(fn, timeout)
     return nil
 end
 
-local function waitDialogueOption1()
-    return waitFor(function()
-        local ui = PlayerGui:FindFirstChild("DialogueUI")
-        if not ui then return nil end
-        local list = ui:FindFirstChild("MainFrame")
-            and ui.MainFrame:FindFirstChild("ResponseFrame")
-            and ui.MainFrame.ResponseFrame:FindFirstChild("List")
-        local opt1 = list and list:FindFirstChild("1")
-        if opt1 and opt1:IsA("GuiObject") and opt1.AbsoluteSize.X > 2 then
-            return opt1
-        end
-        return nil
-    end, 12)
+local function getDialogueOption1()
+    local ui = PlayerGui:FindFirstChild("DialogueUI")
+    if not ui then return nil end
+    local list = ui:FindFirstChild("MainFrame")
+        and ui.MainFrame:FindFirstChild("ResponseFrame")
+        and ui.MainFrame.ResponseFrame:FindFirstChild("List")
+    local opt1 = list and list:FindFirstChild("1")
+    if opt1 and opt1:IsA("GuiObject") and opt1.AbsoluteSize.X > 2 then
+        return opt1
+    end
+    return nil
 end
 
-local function waitShop()
-    return waitFor(function()
-        local shop = PlayerGui:FindFirstChild("Shop")
-        if not shop then return nil end
-        local main = shop:FindFirstChild("Main")
-        if main and main:FindFirstChild("ScrollingFrame") then return shop end
-        return nil
-    end, 8)
+local function shopIsOpen()
+    local shop = PlayerGui:FindFirstChild("Shop")
+    if not shop then return false end
+    local main = shop:FindFirstChild("Main")
+    return main and main:FindFirstChild("ScrollingFrame") ~= nil
+end
+
+-- Click opcion 1 cada 1 segundo hasta que abra Shop
+local function clickDialogueUntilShop()
+    local opt1 = waitFor(getDialogueOption1, 12)
+    if not opt1 then
+        notify("No dialogo")
+        return false
+    end
+
+    notify("Dialogo abierto — click cada 1s hasta Shop...")
+    local t0 = tick()
+    while tick() - t0 < 15 do
+        if shopIsOpen() then
+            notify("Shop abierta")
+            return true
+        end
+        opt1 = getDialogueOption1() or opt1
+        clickOnce(opt1)
+        -- esperar 1 segundo; si en el medio abre shop, salir
+        local w = tick()
+        while tick() - w < 1 do
+            if shopIsOpen() then
+                notify("Shop abierta")
+                return true
+            end
+            task.wait(0.1)
+        end
+    end
+    return shopIsOpen()
 end
 
 local function buyOneEachAndExit()
@@ -307,10 +331,10 @@ local function buyOneEachAndExit()
     notify("Comprando 1 de cada (" .. count .. ")...")
     for i = 1, count do
         clickOnce(items[i])
-        task.wait(0.5)
+        task.wait(0.4) -- no tan lento
     end
 
-    task.wait(0.25)
+    task.wait(0.2)
     local exitBtn = main:FindFirstChild("Exit")
     if exitBtn then
         notify("EXIT")
@@ -327,7 +351,7 @@ task.spawn(function()
         notify("Fallo viaje")
         return
     end
-    task.wait(0.35)
+    task.wait(0.3)
 
     local npc = getLamont()
     if not npc then
@@ -347,37 +371,21 @@ task.spawn(function()
 
     notify("Fijando camara...")
     startLookAt(lookPos)
-    task.wait(0.35)
+    task.wait(0.3)
 
     notify("Proximity 40 studs...")
     enlargeAndFirePrompt(prompt)
 
-    notify("Esperando dialogo...")
-    local opt1 = waitDialogueOption1()
-    if not opt1 then
-        notify("No dialogo")
-        stopLookAt()
-        destroyPlatform()
-        return
-    end
-
-    task.wait(0.3)
-    notify("Click opcion 1")
-    clickOnce(opt1)
-
-    notify("Esperando Shop...")
-    if not waitShop() then
+    if not clickDialogueUntilShop() then
         notify("Shop no abrio")
         stopLookAt()
         destroyPlatform()
         return
     end
 
-    task.wait(0.35)
+    task.wait(0.3)
     buyOneEachAndExit()
 
     stopLookAt()
-    -- Ya compre: ahora si se puede quitar la plataforma (opcional)
-    -- destroyPlatform()
     notify("Listo")
 end)
