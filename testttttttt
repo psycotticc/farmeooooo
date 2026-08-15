@@ -16,7 +16,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 -- Misma posicion que el script de PC
 local ShopPosition = CFrame.new(511.364, 3.575, 597.820)
 local SafeHeight = -8
-local TravelTime = 32
+local TravelTime = 55
 
 local platform = nil
 local stayConn = nil
@@ -123,7 +123,7 @@ local function travelToShop()
     local destY = target.Y -- 3.575 como en PC
 
     notify("Bajando...")
-    local down = TweenService:Create(platform, TweenInfo.new(3.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+    local down = TweenService:Create(platform, TweenInfo.new(5.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
         CFrame = CFrame.new(platform.Position.X, SafeHeight, platform.Position.Z)
     })
     down:Play()
@@ -138,7 +138,7 @@ local function travelToShop()
 
     notify("Subiendo...")
     -- Igual PC: plataforma a destY - 4.3  => personaje a destY
-    local up = TweenService:Create(platform, TweenInfo.new(4.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    local up = TweenService:Create(platform, TweenInfo.new(7.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         CFrame = CFrame.new(target.X, destY - 4.3, target.Z)
     })
     up:Play()
