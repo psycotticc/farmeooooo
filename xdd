@@ -1308,131 +1308,135 @@ end
 
 -- =========================
 
+
+
 -- =========================
--- VALARY UI (tema morado)
+-- VALARY UI
 -- =========================
-local Library
-do
-	local ok, res = pcall(function()
-		return loadstring(game:HttpGet("https://raw.githubusercontent.com/psycotticc/farmeooooo/refs/heads/main/library%20valary"))()
-	end)
-	if not ok or not res then
-		warn("[GravityHub] Failed to load Valary Library:", res)
-		return
-	end
-	Library = res
+getgenv().ValaryLibraryLoaded = nil
+getgenv().Library = nil
+
+local Library = loadstring(readfile("Valary_UI_Library_Standalone.lua"))()
+if not Library then
+	Library = getgenv().Library
+end
+if not Library then
+	warn("[GravityHub] No se pudo cargar Valary_UI_Library_Standalone.lua")
+	return
 end
 
--- Tema todo morado (cambia el rojo del preset)
-local PurpleTheme = {
-	["Background"]     = Color3.fromRGB(14, 12, 18),
-	["Inline"]         = Color3.fromRGB(24, 20, 32),
-	["Shadow"]         = Color3.fromRGB(0, 0, 0),
-	["Text"]           = Color3.fromRGB(255, 255, 255),
-	["Image"]          = Color3.fromRGB(230, 210, 255),
-	["Dark Gradient"]  = Color3.fromRGB(200, 180, 230),
-	["Inactive Text"]  = Color3.fromRGB(160, 150, 180),
-	["Element"]        = Color3.fromRGB(36, 30, 48),
-	["Accent"]         = Color3.fromRGB(168, 85, 247), -- morado principal
-	["Border"]         = Color3.fromRGB(55, 40, 80),
-}
+local function Notify(title, desc, duration)
+	Library:Notification({
+		Name = title or "GravityHub",
+		Description = desc or "",
+		Duration = duration or 3,
+	})
+end
 
+-- Iconos de la librería (se ven en la barra de abajo)
+local IconFarm = Library:GetImage("USDChip") or Library:GetImage("ShoppingCart") or "rbxassetid://10723407389"
+local IconUtils = Library:GetImage("Wrench") or Library:GetImage("Tune") or "rbxassetid://10734952467"
+local IconSettings = Library:GetImage("MultipleCogs") or Library:GetImage("Tune") or "rbxassetid://10734950828"
+
+-- Color morado igual al texto "Hub"
+local AccentPurple = Color3.fromRGB(190, 140, 255)
 pcall(function()
-	for key, color in pairs(PurpleTheme) do
-		if Library.ChangeTheme then
-			Library:ChangeTheme(key, color)
-		end
-		if Library.Theme then
-			Library.Theme[key] = color
-		end
-	end
+	Library.Theme.Accent = AccentPurple
+	Library:ChangeTheme("Accent", AccentPurple)
+	-- iconos inactivos también un poco morados
+	Library.Theme.Image = Color3.fromRGB(190, 140, 255)
+	Library:ChangeTheme("Image", Color3.fromRGB(190, 140, 255))
 end)
 
 local Window = Library:Window({
-	Name = '<font color="rgb(255,255,255)">Gravity</font><font color="rgb(168,85,247)">Hub</font>',
-	Version = "South Bronx | MS Farm",
+	Name = '<font color="rgb(255,255,255)">Gravity</font><font color="rgb(190,140,255)">Hub</font> | South Bronx',
+	Version = "v1.0",
 	Logo = "74508977851216",
 })
 
 -- ========== FARM ==========
+-- En la barra de abajo: solo icono
+-- Al entrar a la pestaña: se muestra el nombre
 local FarmPage = Window:Page({
 	Name = "Farm",
-	Icon = Library:GetImage("USDChip") or "111178525804834",
-	SubPages = true
+	Icon = IconFarm,
+	SubPages = true,
 })
 
 local FarmSub = FarmPage:SubPage({
-	Name = "Auto Farm",
-	Icon = Library:GetImage("USDChip") or "111178525804834",
-	Columns = 2
+	Name = "AutoFarm",
+	Icon = IconFarm,
+	Columns = 2,
 })
 
-local AutoSection = FarmSub:Section({ Name = "Auto MS", Side = 1 })
-local StatsSection = FarmSub:Section({ Name = "Stats", Side = 2 })
-
-local CostLabel = AutoSection:Label({ Name = "Costo $190" })
-local StatusLabel = AutoSection:Label({ Name = "Status: Esperando..." })
-
-AutoSection:Toggle({
-	Name = "Auto MS",
-	Flag = "auto_ms",
+local AutoCard = FarmSub:Section({ Name = "Auto MS", Side = 1, Icon = IconFarm })
+AutoCard:Toggle({
+	Name = "Auto Marshmallow",
+	Flag = "GH_AutoMS",
 	Default = false,
 	Callback = function(state)
 		if state then StartAutoMS() else StopAutoMS() end
-	end
+	end,
 })
-
-AutoSection:Slider({
-	Name = "Cantidad",
-	Flag = "farm_amount",
+AutoCard:Slider({
+	Name = "Cantidad de compra",
+	Flag = "GH_FarmAmount",
 	Min = 1,
 	Max = 50,
 	Default = 1,
+	Decimals = 1,
 	Callback = function(val)
 		farmAmount = math.clamp(math.floor(val), 1, 50)
-		pcall(function()
-			if CostLabel and CostLabel.SetText then
-				CostLabel:SetText("Costo $" .. (farmAmount * COST_PER_CYCLE))
-			end
-		end)
-	end
+		if LblCosto and LblCosto.SetText then
+			LblCosto:SetText("Costo $" .. tostring(farmAmount * COST_PER_CYCLE))
+		end
+		if LblFarmCfg and LblFarmCfg.SetText then
+			LblFarmCfg:SetText("Farmeo: " .. tostring(farmAmount) .. " ($" .. tostring(farmAmount * COST_PER_CYCLE) .. ")")
+		end
+	end,
 })
+local LblCosto = AutoCard:Label("Costo $190")
 
-AutoSection:Toggle({
-	Name = "Limit Cash",
-	Flag = "limit_cash_on",
+local CashCard = FarmSub:Section({ Name = "Limit Cash", Side = 1, Icon = IconFarm })
+CashCard:Toggle({
+	Name = "Límite de dinero",
+	Flag = "GH_LimitCash",
 	Default = false,
 	Callback = function(state)
 		limitCashOn = state
 		if limitCashOn then CheckLimitCash() end
-	end
+	end,
 })
-
-AutoSection:Slider({
+CashCard:Slider({
 	Name = "Cash objetivo",
-	Flag = "limit_cash_amount",
+	Flag = "GH_LimitAmount",
 	Min = MIN_CASH,
 	Max = MAX_CASH,
 	Default = 25000,
+	Decimals = 1,
 	Callback = function(val)
 		limitCashAmount = math.clamp(math.floor(val), MIN_CASH, MAX_CASH)
 		if limitCashOn then CheckLimitCash() end
-	end
+	end,
 })
 
-local LblWater   = StatsSection:Label({ Name = "Water: 0" })
-local LblSugar   = StatsSection:Label({ Name = "Sugar: 0" })
-local LblGelatin = StatsSection:Label({ Name = "Gelatin: 0" })
-local LblSmall   = StatsSection:Label({ Name = "Small $1470: 0" })
-local LblMedium  = StatsSection:Label({ Name = "Medium $2840: 0" })
-local LblLarge   = StatsSection:Label({ Name = "Large $4150: 0" })
-local LblCounter = StatsSection:Label({ Name = "Counter $: 0" })
-local LblMade    = StatsSection:Label({ Name = "Hecho $: 0" })
-local LblFarmCfg = StatsSection:Label({ Name = "Farmeo: 1 ($190)" })
-local LblLimit   = StatsSection:Label({ Name = "Limit: $25000" })
+local IngCard = FarmSub:Section({ Name = "Ingredientes / Bolsas", Side = 2, Icon = IconFarm })
+local LblWater = IngCard:Label("Water: 0")
+local LblSugar = IngCard:Label("Sugar: 0")
+local LblGelatin = IngCard:Label("Gelatin: 0")
+local LblSmall = IngCard:Label("Small $1470: 0")
+local LblMedium = IngCard:Label("Medium $2840: 0")
+local LblLarge = IngCard:Label("Large $4150: 0")
+
+local MoneyCard = FarmSub:Section({ Name = "Dinero / Status", Side = 2, Icon = IconFarm })
+local LblCounter = MoneyCard:Label("Counter $: 0")
+local LblMade = MoneyCard:Label("Hecho $: 0")
+local LblFarmCfg = MoneyCard:Label("Farmeo: 1 ($190)")
+local LblLimitCfg = MoneyCard:Label("Límite: $25000")
+local LblEstado = MoneyCard:Label("Estado: Esperando...")
 
 task.spawn(function()
-	while task.wait(0.3) do
+	while true do
 		pcall(function()
 			local water = GetToolCount("Water")
 			local sugar = GetToolCount("Sugar Block Bag")
@@ -1442,62 +1446,63 @@ task.spawn(function()
 			local large = GetToolCount("Large Marshmallow Bag")
 			local bagMoney = (small * 1470) + (medium * 2840) + (large * 4150)
 
-			if LblWater and LblWater.SetText then
-				LblWater:SetText("Water: " .. water)
-				LblSugar:SetText("Sugar: " .. sugar)
-				LblGelatin:SetText("Gelatin: " .. gelatin)
-				LblSmall:SetText("Small $1470: " .. small)
-				LblMedium:SetText("Medium $2840: " .. medium)
-				LblLarge:SetText("Large $4150: " .. large)
-				LblCounter:SetText("Counter $: " .. bagMoney)
-				LblMade:SetText("Hecho $: " .. TotalMoneyMade)
+			if LblWater and LblWater.SetText then LblWater:SetText("Water: " .. water) end
+			if LblSugar and LblSugar.SetText then LblSugar:SetText("Sugar: " .. sugar) end
+			if LblGelatin and LblGelatin.SetText then LblGelatin:SetText("Gelatin: " .. gelatin) end
+			if LblSmall and LblSmall.SetText then LblSmall:SetText("Small $1470: " .. small) end
+			if LblMedium and LblMedium.SetText then LblMedium:SetText("Medium $2840: " .. medium) end
+			if LblLarge and LblLarge.SetText then LblLarge:SetText("Large $4150: " .. large) end
+			if LblCounter and LblCounter.SetText then LblCounter:SetText("Counter $: " .. bagMoney) end
+			if LblMade and LblMade.SetText then LblMade:SetText("Hecho $: " .. TotalMoneyMade) end
+			if LblCosto and LblCosto.SetText then
+				LblCosto:SetText("Costo $" .. tostring(farmAmount * COST_PER_CYCLE))
+			end
+			if LblFarmCfg and LblFarmCfg.SetText then
 				LblFarmCfg:SetText("Farmeo: " .. tostring(farmAmount) .. " ($" .. tostring(farmAmount * COST_PER_CYCLE) .. ")")
-				LblLimit:SetText("Limit: $" .. tostring(limitCashAmount))
 			end
-			if StatusLabel and StatusLabel.SetText then
-				StatusLabel:SetText("Status: " .. tostring(CurrentStatus))
-			end
+			if LblLimitCfg and LblLimitCfg.SetText then LblLimitCfg:SetText("Límite: $" .. tostring(limitCashAmount)) end
+			if LblEstado and LblEstado.SetText then LblEstado:SetText("Estado: " .. tostring(CurrentStatus)) end
 		end)
+		task.wait(0.25)
 	end
 end)
 
 -- ========== UTILS ==========
 local UtilsPage = Window:Page({
 	Name = "Utils",
-	Icon = Library:GetImage("Wrench") or Library:GetImage("NewController30px") or "111178525804834",
-	SubPages = true
+	Icon = IconUtils,
+	SubPages = true,
 })
 
 local UtilsSub = UtilsPage:SubPage({
-	Name = "Utilities",
-	Icon = Library:GetImage("Wrench") or "111178525804834",
-	Columns = 1
+	Name = "Utils",
+	Icon = IconUtils,
+	Columns = 2,
 })
 
-local MoveSection = UtilsSub:Section({ Name = "Movement", Side = 1 })
-local DeleteSection = UtilsSub:Section({ Name = "Delete", Side = 1 })
-
-MoveSection:Toggle({
+local MoveCard = UtilsSub:Section({ Name = "Movement", Side = 1, Icon = IconUtils })
+MoveCard:Toggle({
 	Name = "Spin Bot",
-	Flag = "spin",
+	Flag = "GH_Spin",
 	Default = false,
-	Callback = function(state) ToggleSpinBot(state) end
+	Callback = function(state)
+		ToggleSpinBot(state)
+	end,
 })
-
-MoveSection:Slider({
+MoveCard:Slider({
 	Name = "Spin Speed",
-	Flag = "spin_speed",
+	Flag = "GH_SpinSpeed",
 	Min = 1,
 	Max = 100,
 	Default = 50,
+	Decimals = 1,
 	Callback = function(val)
 		spinSpeed = math.clamp(math.floor(val), 1, 100)
-	end
+	end,
 })
-
-MoveSection:Toggle({
-	Name = "Stretch",
-	Flag = "stretch",
+MoveCard:Toggle({
+	Name = "Stretch Resolution",
+	Flag = "GH_Stretch",
 	Default = false,
 	Callback = function(state)
 		stretchOn = state
@@ -1509,29 +1514,32 @@ MoveSection:Toggle({
 				stretchConnection = nil
 			end
 		end
-	end
+	end,
 })
-
-MoveSection:Slider({
+MoveCard:Slider({
 	Name = "Stretch Value",
-	Flag = "stretch_value",
+	Flag = "GH_StretchVal",
 	Min = 30,
 	Max = 100,
 	Default = 100,
+	Decimals = 1,
 	Callback = function(val)
 		stretchValue = math.clamp(math.floor(val), 30, 100)
 		if stretchOn then ApplyStretch(stretchValue) end
-	end
+	end,
 })
 
-DeleteSection:Toggle({
+local DeleteCard = UtilsSub:Section({ Name = "Delete", Side = 2, Icon = IconUtils })
+DeleteCard:Toggle({
 	Name = "Delete Mode",
-	Flag = "delete_mode",
+	Flag = "GH_Delete",
 	Default = false,
-	Callback = function(state) deleteMode = state end
+	Callback = function(state)
+		deleteMode = state
+	end,
 })
-
-DeleteSection:Button({
+DeleteCard:Label("PC: Alt+Click | Móvil: toque")
+DeleteCard:Button({
 	Name = "Restablecer último",
 	Callback = function()
 		if #deletedObjects > 0 then
@@ -1547,42 +1555,29 @@ DeleteSection:Button({
 					last.object.Anchored = last.anchored
 				end)
 			end
-			pcall(function()
-				Library:Notification({
-					Title = "Restore",
-					Text = "Restaurado (" .. #deletedObjects .. ")",
-					Duration = 2
-				})
-			end)
+			Notify("Restore", "Restaurado (" .. #deletedObjects .. ")", 2)
 		else
-			pcall(function()
-				Library:Notification({
-					Title = "Restore",
-					Text = "Nada que restaurar",
-					Duration = 2
-				})
-			end)
+			Notify("Restore", "Nada que restaurar", 2)
 		end
-	end
+	end,
 })
 
 -- ========== SETTINGS ==========
 local SettingsPage = Window:Page({
 	Name = "Settings",
-	Icon = Library:GetImage("MultipleCogs") or Library:GetImage("Settings") or "111178525804834",
-	SubPages = true
+	Icon = IconSettings,
+	SubPages = true,
 })
 
 local SettingsSub = SettingsPage:SubPage({
-	Name = "Config",
-	Icon = Library:GetImage("MultipleCogs") or "111178525804834",
-	Columns = 1
+	Name = "Settings",
+	Icon = IconSettings,
+	Columns = 2,
 })
 
-local SettingsSection = SettingsSub:Section({ Name = "Settings", Side = 1 })
-
-SettingsSection:Button({
-	Name = "Copiar Discord",
+local DiscordCard = SettingsSub:Section({ Name = "Discord", Side = 1, Icon = IconSettings })
+DiscordCard:Button({
+	Name = "Copiar invite Discord",
 	Callback = function()
 		local ok = pcall(function()
 			if setclipboard then
@@ -1591,31 +1586,21 @@ SettingsSection:Button({
 				toclipboard(DISCORD_INVITE)
 			end
 		end)
-		pcall(function()
-			Library:Notification({
-				Title = "Discord",
-				Text = ok and ("Invite copiado: " .. DISCORD_INVITE) or DISCORD_INVITE,
-				Duration = 4
-			})
-		end)
-	end
+		Notify("Discord", ok and ("Invite copiado: " .. DISCORD_INVITE) or DISCORD_INVITE, 4)
+	end,
 })
+DiscordCard:Label(DISCORD_INVITE)
 
-SettingsSection:Button({
-	Name = "Unload",
+local InfoCard = SettingsSub:Section({ Name = "Info", Side = 2, Icon = IconSettings })
+InfoCard:Label("GravityHub + Valary UI")
+InfoCard:Label("Menú: tecla Z")
+InfoCard:Button({
+	Name = "Unload UI",
 	Callback = function()
-		StopAutoMS()
-		ToggleSpinBot(false)
-		stretchOn = false
-		if stretchConnection then
-			stretchConnection:Disconnect()
-			stretchConnection = nil
-		end
-		deleteMode = false
 		pcall(function() Library:Unload() end)
-	end
+	end,
 })
 
 Library:Init()
-
-print("[GravityHub] Loaded | Valary UI (Purple) | Open with Z")
+Notify("GravityHub", "Cargado con Valary UI", 4)
+print("[GravityHub] UI lista — abre con Z")
