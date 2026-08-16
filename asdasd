@@ -1,0 +1,1974 @@
+--[[
+    GravityHub - South Bronx Marshmallow Farm
+    Valary UI | Single loadstring ready
+]]
+
+-- ==================== LOAD VALARY LIBRARY ====================
+getgenv().ValaryLibraryLoaded = nil
+getgenv().Library = nil
+
+local Library
+do
+    local ok, res = pcall(function()
+        local src = game:HttpGet("https://raw.githubusercontent.com/psycotticc/farmeooooo/refs/heads/main/library%20valary")
+        local fn, err = loadstring(src)
+        if not fn then error(err or "loadstring failed") end
+        return fn()
+    end)
+    if ok and res then
+        Library = res
+    else
+        Library = getgenv().Library
+    end
+end
+
+if not Library then
+    warn("[GravityHub] Failed to load Valary Library")
+    return
+end
+
+-- ==================== SERVICES ====================
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local VirtualUser = game:GetService("VirtualUser")
+local CoreGui = game:GetService("CoreGui")
+local GuiService = game:GetService("GuiService")
+
+local LocalPlayer = Players.LocalPlayer
+local mouse = LocalPlayer:GetMouse()
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- ==================== STATE ====================
+local AutoMS = false
+local deleteMode = false
+local spinBot = false
+local spinSpeed = 50
+local deletedObjects = {}
+local highlight = nil
+
+local FarmStartTime = 0
+local AccumulatedTime = 0
+local TotalMoneyMade = 0
+local CurrentStatus = "Esperando..."
+local MoneyBefore = 0
+local ApproxStartTime = 0 -- starts when first water goes in pot
+local ApproxActive = false
+
+local SafeHeight = -8
+local isProtecting = false
+local currentPlatform = nil
+local stayConnection = nil
+local originalY = 0
+
+local ShopPosition = CFrame.new(511.364, 3.575, 597.820)
+local SellPosition = CFrame.new(511.251, 3.575, 598.829)
+local TravelTime = 30
+local SHOP_CLEAR_RADIUS = 22
+local farmAmount = 1
+
+local limitCashOn = false
+local limitCashAmount = 25000
+local MAX_CASH = 1750000
+local MIN_CASH = 25000
+
+local stretchValue = 100
+local stretchOn = false
+local stretchConnection = nil
+
+local lookConnection = nil
+local lookTarget = nil
+
+local BAG_PRICES = {
+    ["Small Marshmallow Bag"] = 1470,
+    ["Medium Marshmallow Bag"] = 2840,
+    ["Large Marshmallow Bag"] = 4150,
+}
+
+local COST_WATER = 20
+local COST_SUGAR = 100
+local COST_GELATIN = 70
+local COST_PER_CYCLE = COST_WATER + COST_SUGAR + COST_GELATIN -- 190
+local SECONDS_PER_UNIT = 69 -- 22 + 47
+
+local ALLOWED_APT_PREFIX = "CompactWalkupAPT"
+local POT_PROMPT_DIST = 25
+local UNDER_POT_OFFSET = 3.2
+local DISCORD_INVITE = "https://discord.gg/cKHhaTr93"
+
+-- ==================== ANTI AFK ====================
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+task.spawn(function()
+    while true do
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+        task.wait(math.random(50, 75))
+    end
+end)
+
+-- ==================== HELPERS ====================
+local function SetStatus(text)
+    CurrentStatus = text or CurrentStatus
+end
+
+local function FormatTime(sec)
+    sec = math.max(0, math.floor(sec or 0))
+    local m = math.floor(sec / 60)
+    local s = sec % 60
+    if m > 0 then
+        return m .. "m " .. s .. "s"
+    end
+    return s .. "s"
+end
+
+local function GetPlayerMoney()
+    local ok, result = pcall(function()
+        local amount = LocalPlayer.PlayerGui:FindFirstChild("PlayerUI")
+            and LocalPlayer.PlayerGui.PlayerUI:FindFirstChild("Money")
+            and LocalPlayer.PlayerGui.PlayerUI.Money:FindFirstChild("Amount")
+        if not amount then return 0 end
+        local text = tostring(amount.Text or amount.Value or "0")
+        local digits = string.gsub(text, "[^%d]", "")
+        return tonumber(digits) or 0
+    end)
+    return (ok and result) or 0
+end
+
+MoneyBefore = GetPlayerMoney()
+
+local function CheckLimitCash()
+    if not limitCashOn then return end
+    local money = GetPlayerMoney()
+    if money >= MAX_CASH then
+        pcall(function() LocalPlayer:Kick("GravityHub | Max Money Earned, Congratulations!") end)
+    elseif money >= limitCashAmount then
+        pcall(function() LocalPlayer:Kick("GravityHub | Limit Cash Earned") end)
+    end
+end
+
+task.spawn(function()
+    while true do
+        pcall(CheckLimitCash)
+        task.wait(0.4)
+    end
+end)
+
+local function StartLookAt(pos)
+    if not pos then return end
+    lookTarget = typeof(pos) == "Vector3" and pos or (pos.Position or pos)
+    local cam = workspace.CurrentCamera
+    if cam and lookTarget then
+        pcall(function()
+            cam.CFrame = CFrame.lookAt(cam.CFrame.Position, lookTarget)
+        end)
+    end
+    if lookConnection then return end
+    lookConnection = RunService.RenderStepped:Connect(function()
+        if not lookTarget then return end
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local currentPos = hrp.Position
+        local lookPos = Vector3.new(lookTarget.X, currentPos.Y, lookTarget.Z)
+        if (lookPos - currentPos).Magnitude > 0.08 then
+            hrp.CFrame = CFrame.new(currentPos, lookPos)
+        end
+    end)
+end
+
+local function StopLookAt()
+    lookTarget = nil
+    if lookConnection then
+        lookConnection:Disconnect()
+        lookConnection = nil
+    end
+end
+
+-- ==================== APARTMENT / POT ====================
+local function GetApartmentsFolder()
+    local map = workspace:FindFirstChild("Map")
+    return map and map:FindFirstChild("Apartments")
+end
+
+local function IsAllowedAptFolder(folder)
+    if not folder then return false end
+    return string.find(folder.Name, ALLOWED_APT_PREFIX, 1, true) == 1
+end
+
+local function GetOccupationText(board)
+    if not board then return "" end
+    for _, d in ipairs(board:GetDescendants()) do
+        if d.Name == "Occupation" and (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) then
+            return d.Text or ""
+        end
+    end
+    return ""
+end
+
+local function GetBoard(aptModel)
+    if not aptModel then return nil end
+    return aptModel:FindFirstChild("Board", true) or aptModel:FindFirstChild("Board")
+end
+
+local function GetCookingPots(apt)
+    local pots = {}
+    if not apt then return pots end
+    for _, d in ipairs(apt:GetDescendants()) do
+        local n = string.lower(d.Name or "")
+        if n == "cooking pot" or n == "cookingpot" then
+            table.insert(pots, d)
+        end
+    end
+    return pots
+end
+
+local function GetPotPart(pot)
+    if not pot then return nil end
+    if pot:IsA("BasePart") then return pot end
+    return pot:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function GetUnderPotCFrame(pot)
+    local part = GetPotPart(pot)
+    if not part then return nil end
+    return CFrame.new(part.Position - Vector3.new(0, UNDER_POT_OFFSET, 0))
+end
+
+local function FindOwnedApartment()
+    local apartments = GetApartmentsFolder()
+    if not apartments then return nil end
+    local myName = string.lower(LocalPlayer.Name)
+    local myDisplay = string.lower(LocalPlayer.DisplayName)
+    for _, aptFolder in ipairs(apartments:GetChildren()) do
+        if not IsAllowedAptFolder(aptFolder) then continue end
+        local apt = aptFolder:FindFirstChild("Apartment") or aptFolder
+        local board = GetBoard(apt) or GetBoard(aptFolder)
+        if board then
+            local text = string.lower(GetOccupationText(board))
+            if text ~= "" and (string.find(text, myName, 1, true) or string.find(text, myDisplay, 1, true)) then
+                return apt, aptFolder.Name, aptFolder
+            end
+        end
+    end
+    return nil
+end
+
+local function IsAptFree(board)
+    local text = string.lower(GetOccupationText(board))
+    if text == "" or text == "empty" or text == "for sale" or text == "available"
+        or string.find(text, "vacant", 1, true) or string.find(text, "none", 1, true)
+        or string.find(text, "unoccupied", 1, true) or string.find(text, "libre", 1, true)
+        or string.find(text, "sale", 1, true) or string.find(text, "buy", 1, true)
+        or text == "---" or text == "-" or text == "n/a" then
+        return true
+    end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if string.find(text, string.lower(plr.Name), 1, true)
+            or string.find(text, string.lower(plr.DisplayName), 1, true) then
+            return false
+        end
+    end
+    return #text < 3
+end
+
+local function GetFrontOfBoardCFrame(boardPart)
+    local look = boardPart.CFrame.LookVector
+    local front = -look
+    local stand = boardPart.Position + front * 2.2
+    stand = Vector3.new(stand.X, boardPart.Position.Y - 1.2, stand.Z)
+    if stand.Y < 1 then stand = Vector3.new(stand.X, math.max(boardPart.Position.Y - 1.2, 3), stand.Z) end
+    return CFrame.new(stand, boardPart.Position)
+end
+
+local function FindFreeCompactWalkup()
+    local apartments = GetApartmentsFolder()
+    if not apartments then return nil, "no_folder" end
+    local candidates = {}
+    for _, aptFolder in ipairs(apartments:GetChildren()) do
+        if not IsAllowedAptFolder(aptFolder) then continue end
+        local apt = aptFolder:FindFirstChild("Apartment") or aptFolder
+        local board = GetBoard(apt) or GetBoard(aptFolder)
+        if not board then continue end
+        if not IsAptFree(board) then continue end
+        local pots = GetCookingPots(apt)
+        if #pots == 0 then pots = GetCookingPots(aptFolder) end
+        if #pots == 0 then continue end
+        local boardPart = board:IsA("BasePart") and board or board:FindFirstChildWhichIsA("BasePart", true)
+        if not boardPart then continue end
+        table.insert(candidates, {
+            apt = apt, aptFolder = aptFolder, name = aptFolder.Name,
+            board = board, boardPos = boardPart.Position, boardPart = boardPart,
+            cf = GetFrontOfBoardCFrame(boardPart),
+        })
+    end
+    if #candidates == 0 then return nil, "full" end
+    return candidates[math.random(1, #candidates)], nil
+end
+
+local function IsProtectedObject(obj)
+    if not obj then return true end
+    if obj.Name == "SafePlatform" or obj:IsA("Terrain") then return true end
+    if obj:IsA("ProximityPrompt") then return true end
+    local n = string.lower(obj.Name or "")
+    if n == "board" or string.find(n, "board", 1, true) then return true end
+    if obj:FindFirstAncestor("Board") then return true end
+    if n == "cooking pot" or n == "cookingpot" or string.find(n, "cooking", 1, true) then return true end
+    if n == "lamont bell" or string.find(n, "lamont", 1, true) or string.find(n, "bell", 1, true) then
+        return true
+    end
+    local ancestor = obj
+    while ancestor and ancestor ~= workspace and ancestor ~= game do
+        local an = string.lower(ancestor.Name or "")
+        if an == "lamont bell" or string.find(an, "lamont", 1, true) then return true end
+        if an == "npcs" or an == "npc" then return true end
+        ancestor = ancestor.Parent
+    end
+    local model = obj:FindFirstAncestorWhichIsA("Model")
+    if model and Players:GetPlayerFromCharacter(model) then return true end
+    if obj:IsA("Model") and Players:GetPlayerFromCharacter(obj) then return true end
+    if obj:IsA("Humanoid") or obj:FindFirstChildOfClass("Humanoid") then return true end
+    return false
+end
+
+local function IsWall(obj)
+    if not obj or not obj:IsA("BasePart") then return false end
+    local n = string.lower(obj.Name or "")
+    if n == "wall" or string.find(n, "wall", 1, true) or string.find(n, "pared", 1, true) then return true end
+    if string.find(n, "fence", 1, true) or string.find(n, "barrier", 1, true) then return true end
+    local s = obj.Size
+    if s.Y > 4 and (s.X < 4 or s.Z < 4) then return true end
+    if s.Y > 6 and s.X * s.Z < 50 then return true end
+    return false
+end
+
+local function ClearBlockersNear(pos, radius)
+    radius = radius or 12
+    if not pos then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if not (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")) then continue end
+        if IsProtectedObject(obj) then continue end
+        local ok, dist = pcall(function() return (obj.Position - pos).Magnitude end)
+        if not ok or dist > radius then continue end
+        if IsWall(obj) or dist < 5 then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+end
+
+local function ClearApartmentWalls(apt)
+    if not apt then return end
+    for _, obj in ipairs(apt:GetDescendants()) do
+        if not (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")) then continue end
+        if IsProtectedObject(obj) then continue end
+        if IsWall(obj) then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+end
+
+local function ClearAroundPot(apt, pot, radius)
+    radius = radius or 16
+    local part = GetPotPart(pot)
+    if not part then return end
+    local potPos = part.Position
+    local root = apt or workspace
+    for _, obj in ipairs(root:GetDescendants()) do
+        if not (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")) then continue end
+        if IsProtectedObject(obj) then continue end
+        if pot and (obj == pot or obj:IsDescendantOf(pot)) then continue end
+        local ok, dist = pcall(function() return (obj.Position - potPos).Magnitude end)
+        if ok and dist <= radius then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+end
+
+local function KeepOnePot(apt, aptFolder)
+    local pots = GetCookingPots(apt)
+    if #pots == 0 and aptFolder then pots = GetCookingPots(aptFolder) end
+    if #pots == 0 then return nil end
+    if #pots == 1 then return pots[1] end
+    local keep = pots[1]
+    for i = 2, #pots do pcall(function() pots[i]:Destroy() end) end
+    return keep
+end
+
+local function EnlargePrompt(prompt, dist)
+    if not prompt or not prompt:IsA("ProximityPrompt") then return end
+    pcall(function()
+        prompt.MaxActivationDistance = dist or 50
+        prompt.RequiresLineOfSight = false
+    end)
+end
+
+local function EnlargePotPrompt(pot)
+    if not pot then return end
+    for _, d in ipairs(pot:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then EnlargePrompt(d, POT_PROMPT_DIST) end
+    end
+end
+
+local function EnlargePromptOn(obj, dist)
+    if not obj then return end
+    if obj:IsA("ProximityPrompt") then EnlargePrompt(obj, dist or 50) return end
+    for _, d in ipairs(obj:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then EnlargePrompt(d, dist or 50) end
+    end
+end
+
+-- ==================== GUI CLICK (PC + MOBILE) ====================
+local function fireConnections(obj)
+    if not obj then return 0 end
+    local n = 0
+    local names = {"Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up", "InputBegan", "TouchTap", "MouseButton1Click"}
+    if getconnections then
+        for _, name in ipairs(names) do
+            pcall(function()
+                local sig = obj[name]
+                if typeof(sig) == "RBXScriptSignal" then
+                    for _, c in ipairs(getconnections(sig)) do
+                        pcall(function()
+                            if c.Fire then c:Fire() n += 1
+                            elseif c.Function then c.Function() n += 1 end
+                        end)
+                    end
+                end
+            end)
+        end
+    end
+    if firesignal then
+        for _, name in ipairs(names) do
+            pcall(function()
+                local sig = obj[name]
+                if typeof(sig) == "RBXScriptSignal" then
+                    firesignal(sig)
+                    n += 1
+                end
+            end)
+        end
+    end
+    return n
+end
+
+local function getGuiAbsPos(gui)
+    local ok, pos = pcall(function()
+        local p = gui.AbsolutePosition
+        local s = gui.AbsoluteSize
+        local inset = Vector2.new(0, 0)
+        pcall(function()
+            inset = GuiService:GetGuiInset()
+        end)
+        return Vector2.new(p.X + s.X / 2, p.Y + s.Y / 2 + inset.Y)
+    end)
+    return ok and pos or nil
+end
+
+local function touchAt(pos)
+    if not pos then return end
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+        task.wait(0.03)
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+    end)
+    pcall(function()
+        VirtualInputManager:SendTouchEvent(pos.X, pos.Y, true, game)
+        task.wait(0.03)
+        VirtualInputManager:SendTouchEvent(pos.X, pos.Y, false, game)
+    end)
+end
+
+local function clickGui(gui)
+    if not gui then return 0 end
+    local n = fireConnections(gui)
+    for _, d in ipairs(gui:GetDescendants()) do
+        if d:IsA("GuiButton") or d:IsA("TextButton") or d:IsA("ImageButton") then
+            n += fireConnections(d)
+            local pos = getGuiAbsPos(d)
+            if pos then touchAt(pos) end
+        end
+    end
+    if gui:IsA("GuiButton") or gui:IsA("TextButton") or gui:IsA("ImageButton") then
+        n += fireConnections(gui)
+    end
+    local pos = getGuiAbsPos(gui)
+    if pos then touchAt(pos) end
+    return n
+end
+
+local function waitFor(fn, timeout)
+    timeout = timeout or 8
+    local t = tick()
+    while tick() - t < timeout do
+        local ok, v = pcall(fn)
+        if ok and v then return v end
+        task.wait(0.1)
+    end
+    return nil
+end
+
+local function FireBoardPrompt(board, boardPart)
+    if not board then return false end
+    local prompt = board:FindFirstChildOfClass("ProximityPrompt") or board:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not prompt then return false end
+    EnlargePrompt(prompt, 50)
+    local pos = boardPart and boardPart.Position or board:GetPivot().Position
+    StartLookAt(pos)
+    local hold = (prompt.HoldDuration and prompt.HoldDuration > 0) and (prompt.HoldDuration + 0.15) or 0.55
+    pcall(function() if fireproximityprompt then fireproximityprompt(prompt, hold) end end)
+    pcall(function() prompt:InputHoldBegin() end)
+    task.wait(hold)
+    pcall(function() prompt:InputHoldEnd() end)
+    return true
+end
+
+local function HoldAnyPromptNear(pos, maxDist)
+    maxDist = maxDist or 40
+    local best, bestDist = nil, maxDist
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local parent = obj.Parent
+            local ppos = nil
+            if parent and parent:IsA("BasePart") then ppos = parent.Position
+            elseif parent then
+                local bp = parent:FindFirstChildWhichIsA("BasePart", true)
+                if bp then ppos = bp.Position end
+            end
+            if ppos then
+                local d = (ppos - pos).Magnitude
+                if d < bestDist then bestDist = d best = obj end
+            end
+        end
+    end
+    if not best then return false end
+    EnlargePrompt(best, 50)
+    local holdTime = (best.HoldDuration and best.HoldDuration > 0) and (best.HoldDuration + 0.15) or 0.55
+    pcall(function() if fireproximityprompt then fireproximityprompt(best, holdTime) end end)
+    pcall(function() best:InputHoldBegin() end)
+    task.wait(holdTime)
+    pcall(function() best:InputHoldEnd() end)
+    return true
+end
+
+local function CleanApartmentForFarm(apt, aptFolder, board, boardPart)
+    if not apt then return nil end
+    SetStatus("Limpiando paredes...")
+    ClearApartmentWalls(apt)
+    if aptFolder and aptFolder ~= apt then ClearApartmentWalls(aptFolder) end
+    if boardPart then ClearBlockersNear(boardPart.Position, 14) end
+    local keepPot = KeepOnePot(apt, aptFolder)
+    if keepPot then
+        ClearAroundPot(apt, keepPot, 16)
+        if aptFolder then ClearAroundPot(aptFolder, keepPot, 16) end
+    end
+    return keepPot
+end
+
+-- ==================== PLATFORM ====================
+local function DestroyPlatform()
+    if stayConnection then stayConnection:Disconnect() stayConnection = nil end
+    if currentPlatform then currentPlatform:Destroy() currentPlatform = nil end
+    isProtecting = false
+end
+
+local function ForceGoUp()
+    if not isProtecting or not currentPlatform then
+        isProtecting = false
+        return
+    end
+    SetStatus("Subiendo...")
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local px = currentPlatform.Position.X
+    local pz = currentPlatform.Position.Z
+    local targetY = math.max(originalY, 25)
+    if targetY < 20 then targetY = 25 end
+    local upTween = TweenService:Create(currentPlatform, TweenInfo.new(2.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        CFrame = CFrame.new(px, targetY - 4.3, pz)
+    })
+    upTween:Play()
+    upTween.Completed:Wait()
+    DestroyPlatform()
+    if hrp and hrp.Parent then
+        hrp.CFrame = CFrame.new(px, targetY, pz)
+    end
+    StopLookAt()
+end
+
+local function EnsurePlatform()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    if isProtecting and currentPlatform and currentPlatform.Parent then return true end
+    isProtecting = true
+    originalY = math.max(hrp.Position.Y, 5)
+    local currentPos = hrp.Position
+    currentPlatform = Instance.new("Part")
+    currentPlatform.Name = "SafePlatform"
+    currentPlatform.Size = Vector3.new(12, 1.5, 12)
+    currentPlatform.Anchored = true
+    currentPlatform.CanCollide = true
+    currentPlatform.Material = Enum.Material.Neon
+    currentPlatform.Color = Color3.fromRGB(168, 85, 247)
+    currentPlatform.Transparency = 0.2
+    currentPlatform.CFrame = CFrame.new(currentPos.X, currentPos.Y - 4, currentPos.Z)
+    currentPlatform.Parent = workspace
+    stayConnection = RunService.Heartbeat:Connect(function()
+        if hrp and hrp.Parent and currentPlatform and currentPlatform.Parent then
+            local p = currentPlatform.Position
+            hrp.CFrame = CFrame.new(p.X, p.Y + 4.3, p.Z)
+        end
+    end)
+    return true
+end
+
+local function SlowTravelUnderMap(targetCF, label, travelSeconds, riseSeconds)
+    travelSeconds = travelSeconds or TravelTime
+    riseSeconds = riseSeconds or 4.5
+    if not EnsurePlatform() then return false end
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    SetStatus(label or "Viajando bajo el mapa...")
+    local downTween = TweenService:Create(currentPlatform, TweenInfo.new(3.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+        CFrame = CFrame.new(currentPlatform.Position.X, SafeHeight, currentPlatform.Position.Z)
+    })
+    downTween:Play()
+    downTween.Completed:Wait()
+    if not AutoMS then ForceGoUp() return false end
+    local target = targetCF.Position
+    local destY = target.Y
+    local moveTween = TweenService:Create(currentPlatform, TweenInfo.new(travelSeconds, Enum.EasingStyle.Linear), {
+        CFrame = CFrame.new(target.X, SafeHeight, target.Z)
+    })
+    moveTween:Play()
+    while moveTween.PlaybackState == Enum.PlaybackState.Playing do
+        if not AutoMS then moveTween:Cancel() ForceGoUp() return false end
+        task.wait(0.1)
+    end
+    if not AutoMS then ForceGoUp() return false end
+    SetStatus("Subiendo...")
+    local upTween = TweenService:Create(currentPlatform, TweenInfo.new(riseSeconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        CFrame = CFrame.new(target.X, destY - 4.3, target.Z)
+    })
+    upTween:Play()
+    while upTween.PlaybackState == Enum.PlaybackState.Playing do
+        if not AutoMS then upTween:Cancel() ForceGoUp() return false end
+        task.wait(0.1)
+    end
+    if not AutoMS then ForceGoUp() return false end
+    task.wait(0.2)
+    return true
+end
+
+local function GoDownAndUp(waitTime)
+    if not EnsurePlatform() then return end
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    originalY = math.max(hrp.Position.Y, 5)
+    local px = currentPlatform.Position.X
+    local pz = currentPlatform.Position.Z
+    SetStatus("Bajando...")
+    local downTween = TweenService:Create(currentPlatform, TweenInfo.new(2.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        CFrame = CFrame.new(px, SafeHeight, pz)
+    })
+    downTween:Play()
+    downTween.Completed:Wait()
+    if not AutoMS then ForceGoUp() return end
+    SetStatus("Esperando abajo...")
+    local startWait = tick()
+    while tick() - startWait < waitTime do
+        if not AutoMS then ForceGoUp() return end
+        task.wait(0.1)
+    end
+    SetStatus("Subiendo...")
+    local upTween = TweenService:Create(currentPlatform, TweenInfo.new(2.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        CFrame = CFrame.new(px, originalY - 4.3, pz)
+    })
+    upTween:Play()
+    upTween.Completed:Wait()
+    if not AutoMS then ForceGoUp() return end
+end
+
+-- ==================== BUY (FIXED: no x4 multiply) ====================
+local function FindShopItems(scrolling)
+    -- Only the 3 real items once each (Water, Sugar, Gelatin)
+    local found = {}
+    local order = {}
+    local keywords = {
+        { key = "water", label = "Water" },
+        { key = "sugar", label = "Sugar" },
+        { key = "gelatin", label = "Gelatin" },
+    }
+
+    local function matches(obj, key)
+        local n = string.lower(obj.Name or "")
+        if string.find(n, key, 1, true) then return true end
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("TextLabel") or d:IsA("TextButton") then
+                local t = string.lower(d.Text or "")
+                if string.find(t, key, 1, true) then return true end
+            end
+        end
+        return false
+    end
+
+    for _, child in ipairs(scrolling:GetChildren()) do
+        if child.Name == "PurchaseableItem" or child:IsA("Frame") or child:IsA("TextButton") or child:IsA("ImageButton") then
+            for _, kw in ipairs(keywords) do
+                if not found[kw.key] and matches(child, kw.key) then
+                    found[kw.key] = child
+                    table.insert(order, child)
+                end
+            end
+        end
+    end
+
+    -- Fallback: first 3 PurchaseableItem only (no duplicates from children[5]/[6])
+    if #order < 3 then
+        order = {}
+        found = {}
+        for _, child in ipairs(scrolling:GetChildren()) do
+            if child.Name == "PurchaseableItem" and not found[child] then
+                found[child] = true
+                table.insert(order, child)
+                if #order >= 3 then break end
+            end
+        end
+    end
+
+    return order
+end
+
+local function BuyFromOpenShop(amount)
+    amount = math.clamp(math.floor(amount or 1), 1, 50)
+    local shop = LocalPlayer.PlayerGui:FindFirstChild("Shop")
+    if not shop then return false end
+    local main = shop:FindFirstChild("Main")
+    local scrolling = main and main:FindFirstChild("ScrollingFrame")
+    if not scrolling then return false end
+
+    local targets = FindShopItems(scrolling)
+    if #targets == 0 then
+        SetStatus("No items en shop")
+        return false
+    end
+
+    SetStatus("Comprando x" .. amount .. "...")
+    for round = 1, amount do
+        if not AutoMS then return false end
+        for _, item in ipairs(targets) do
+            if not AutoMS then return false end
+            clickGui(item)
+            task.wait(isMobile and 0.35 or 0.25)
+            if isMobile then
+                clickGui(item)
+                task.wait(0.15)
+            end
+        end
+        task.wait(0.15)
+    end
+
+    local exitBtn = main and main:FindFirstChild("Exit")
+    if exitBtn then
+        task.wait(0.15)
+        clickGui(exitBtn)
+    end
+    task.wait(0.3)
+    SetStatus("Compra lista")
+    return true
+end
+
+local function ClickDialogueOption1()
+    local ui = LocalPlayer.PlayerGui:FindFirstChild("DialogueUI")
+    if not ui then return false end
+    local list = ui:FindFirstChild("MainFrame")
+        and ui.MainFrame:FindFirstChild("ResponseFrame")
+        and ui.MainFrame.ResponseFrame:FindFirstChild("List")
+    if not list then return false end
+    local one = list:FindFirstChild("1")
+    if not one then return false end
+    for _ = 1, 8 do
+        local frame = one:FindFirstChild("Frame")
+        local dialogue = one:FindFirstChild("Dialogue")
+        if frame then clickGui(frame) end
+        task.wait(0.1)
+        if dialogue then clickGui(dialogue) end
+        task.wait(0.1)
+        clickGui(one)
+        if LocalPlayer.PlayerGui:FindFirstChild("Shop") then return true end
+        task.wait(0.12)
+    end
+    return LocalPlayer.PlayerGui:FindFirstChild("Shop") ~= nil
+end
+
+local function AutoBuyIngredients(amount)
+    if not AutoMS then return false end
+    amount = math.clamp(math.floor(amount or farmAmount or 1), 1, 50)
+
+    -- If shop already open → buy directly
+    if LocalPlayer.PlayerGui:FindFirstChild("Shop") then
+        SetStatus("Shop abierto — comprando...")
+        return BuyFromOpenShop(amount)
+    end
+
+    -- If dialogue open → click option 1 then buy
+    if LocalPlayer.PlayerGui:FindFirstChild("DialogueUI") then
+        SetStatus("Dialogo abierto — clickeando...")
+        ClickDialogueOption1()
+        local shop = waitFor(function()
+            return LocalPlayer.PlayerGui:FindFirstChild("Shop")
+        end, 6)
+        if shop then
+            return BuyFromOpenShop(amount)
+        end
+    end
+
+    SetStatus("Comprando x" .. amount .. "...")
+
+    local npc = workspace:FindFirstChild("Folders")
+        and workspace.Folders:FindFirstChild("NPCs")
+        and workspace.Folders.NPCs:FindFirstChild("Lamont Bell")
+    local torso = npc and npc:FindFirstChild("UpperTorso")
+    local prompt = torso and torso:FindFirstChildOfClass("ProximityPrompt")
+    if not prompt and npc then
+        prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
+    end
+    if not prompt then
+        SetStatus("No ProximityPrompt")
+        return false
+    end
+
+    local npcPos = (torso and torso.Position) or (npc and npc:GetPivot().Position) or ShopPosition.Position
+    ClearBlockersNear(npcPos, 14)
+    EnlargePrompt(prompt, 50)
+    EnlargePromptOn(npc, 50)
+    StartLookAt(npcPos)
+
+    pcall(function()
+        if fireproximityprompt then fireproximityprompt(prompt, 0.9) end
+    end)
+    pcall(function() prompt:InputHoldBegin() end)
+    task.wait(0.9)
+    pcall(function() prompt:InputHoldEnd() end)
+
+    if not AutoMS then return false end
+
+    local option1 = waitFor(function()
+        local ui = LocalPlayer.PlayerGui:FindFirstChild("DialogueUI")
+        if not ui then return nil end
+        local list = ui:FindFirstChild("MainFrame")
+            and ui.MainFrame:FindFirstChild("ResponseFrame")
+            and ui.MainFrame.ResponseFrame:FindFirstChild("List")
+        if not list then return nil end
+        local one = list:FindFirstChild("1")
+        if not one then return nil end
+        local frame = one:FindFirstChild("Frame")
+        if frame and frame.AbsoluteSize.X > 2 then return one end
+        return nil
+    end, 10)
+
+    if not option1 then
+        SetStatus("No abrio dialogo")
+        return false
+    end
+
+    task.wait(0.35)
+    if not AutoMS then return false end
+    ClickDialogueOption1()
+
+    local shop = waitFor(function()
+        return LocalPlayer.PlayerGui:FindFirstChild("Shop")
+    end, 6)
+    if not shop then
+        SetStatus("Shop no abrio")
+        return false
+    end
+    task.wait(0.3)
+    if not AutoMS then return false end
+
+    return BuyFromOpenShop(amount)
+end
+
+-- ==================== TOOLS ====================
+local function GetToolCount(name)
+    local count = 0
+    local lowerName = string.lower(name)
+    local function check(container)
+        if not container then return end
+        for _, t in ipairs(container:GetChildren()) do
+            if t:IsA("Tool") and string.find(string.lower(t.Name), lowerName) then
+                count += 1
+            end
+        end
+    end
+    check(LocalPlayer:FindFirstChild("Backpack"))
+    check(LocalPlayer.Character)
+    return count
+end
+
+local function GetTool(name)
+    local lowerName = string.lower(name)
+    local function search(container)
+        if not container then return nil end
+        for _, t in ipairs(container:GetChildren()) do
+            if t:IsA("Tool") and string.find(string.lower(t.Name), lowerName) then
+                return t
+            end
+        end
+        return nil
+    end
+    return search(LocalPlayer:FindFirstChild("Backpack")) or search(LocalPlayer.Character)
+end
+
+local function PressE()
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.04)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    end)
+end
+
+local function EquipAndUse2Times(toolName)
+    if not AutoMS then return false end
+    local tool = GetTool(toolName)
+    if not tool then return false end
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    hum:EquipTool(tool)
+    task.wait(0.28)
+    for _ = 1, 2 do PressE() task.wait(0.09) end
+    task.wait(0.22)
+    return true
+end
+
+local function HasNoIngredients()
+    return GetToolCount("Water") == 0 and GetToolCount("Sugar Block Bag") == 0 and GetToolCount("Gelatin") == 0
+end
+
+-- ==================== SELL (anti-crash) ====================
+local cachedSellPrompt = nil
+
+local function GetLamontPrompt()
+    if cachedSellPrompt and cachedSellPrompt.Parent then
+        return cachedSellPrompt
+    end
+    local ok, prompt = pcall(function()
+        local npc = workspace:FindFirstChild("Folders")
+            and workspace.Folders:FindFirstChild("NPCs")
+            and workspace.Folders.NPCs:FindFirstChild("Lamont Bell")
+        if not npc then return nil end
+        local torso = npc:FindFirstChild("UpperTorso")
+        local p = torso and torso:FindFirstChildOfClass("ProximityPrompt")
+        if not p then p = npc:FindFirstChildWhichIsA("ProximityPrompt", true) end
+        return p
+    end)
+    if ok and prompt then
+        cachedSellPrompt = prompt
+        EnlargePrompt(prompt, 50)
+        return prompt
+    end
+    return nil
+end
+
+local function HoldSellPrompt()
+    local prompt = GetLamontPrompt()
+    if prompt then
+        local holdTime = (prompt.HoldDuration and prompt.HoldDuration > 0) and (prompt.HoldDuration + 0.15) or 0.55
+        pcall(function() if fireproximityprompt then fireproximityprompt(prompt, holdTime) end end)
+        pcall(function() prompt:InputHoldBegin() end)
+        task.wait(holdTime)
+        pcall(function() prompt:InputHoldEnd() end)
+        return true
+    end
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        return HoldAnyPromptNear(hrp.Position, 40)
+    end
+    return false
+end
+
+local function SellAllBags()
+    SetStatus("Vendiendo bolsas...")
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    local order = {
+        "Small Marshmallow Bag",
+        "Medium Marshmallow Bag",
+        "Large Marshmallow Bag",
+    }
+
+    local maxLoops = 40
+    local failStreak = 0
+
+    for _ = 1, maxLoops do
+        if not AutoMS then break end
+        local okLoop, err = pcall(function()
+            local bagName = nil
+            for _, name in ipairs(order) do
+                if GetToolCount(name) > 0 then
+                    bagName = name
+                    break
+                end
+            end
+            if not bagName then
+                failStreak = 99
+                return
+            end
+
+            local before = GetToolCount(bagName)
+            local tool = GetTool(bagName)
+            if not tool then
+                failStreak += 1
+                return
+            end
+
+            SetStatus("Vendiendo " .. bagName .. "...")
+            pcall(function() hum:EquipTool(tool) end)
+            task.wait(0.2)
+            HoldSellPrompt()
+            task.wait(0.45)
+
+            local after = GetToolCount(bagName)
+            local sold = before - after
+            if sold > 0 then
+                TotalMoneyMade += sold * (BAG_PRICES[bagName] or 0)
+                failStreak = 0
+            else
+                failStreak += 1
+            end
+            CheckLimitCash()
+        end)
+        if not okLoop then
+            failStreak += 1
+        end
+        if failStreak >= 4 then break end
+        task.wait(0.15)
+    end
+
+    SetStatus("Venta terminada")
+    CheckLimitCash()
+end
+
+local function FinishFarmAndSell()
+    local okAll, result = pcall(function()
+        StopLookAt()
+        SetStatus("Yendo a vender...")
+
+        if not SlowTravelUnderMap(SellPosition, "Viajando a venta...", TravelTime, 4.5) then
+            return false
+        end
+        if not AutoMS then return false end
+
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        DestroyPlatform()
+
+        if hrp and hrp.Parent then
+            local sellPos = SellPosition.Position
+            hrp.CFrame = CFrame.new(sellPos.X, sellPos.Y + 3, sellPos.Z)
+        end
+
+        task.wait(0.35)
+        StartLookAt(SellPosition.Position)
+        SellAllBags()
+        if not AutoMS then return false end
+
+        StopLookAt()
+        DestroyPlatform()
+        SetStatus("Venta terminada - comprando...")
+
+        task.wait(0.5)
+
+        local success = false
+        for attempt = 1, 4 do
+            if not AutoMS then break end
+            SetStatus("Abriendo menu de compra... (" .. attempt .. "/4)")
+            if AutoBuyIngredients(farmAmount) then
+                success = true
+                break
+            end
+            task.wait(1.0)
+        end
+
+        if success then
+            SetStatus("Compra lista - yendo al depa")
+        else
+            SetStatus("No se pudo comprar")
+        end
+
+        task.wait(0.3)
+        return success
+    end)
+    if not okAll then
+        SetStatus("Error en venta/compra")
+        pcall(DestroyPlatform)
+        return false
+    end
+    return result
+end
+
+-- ==================== BUY APT / POT ====================
+local function BuyApartmentWithPot()
+    if FindOwnedApartment() then
+        SetStatus("Ya tienes departamento")
+        return true
+    end
+    local free = FindFreeCompactWalkup()
+    if not free then
+        SetStatus("No hay departamentos libres")
+        return false
+    end
+    SetStatus("Yendo al Board " .. tostring(free.name) .. "...")
+    if not SlowTravelUnderMap(free.cf, "Viajando al Board...", 28, 5.0) then
+        return false
+    end
+    if not AutoMS then return false end
+
+    if currentPlatform and currentPlatform.Parent and free.boardPart then
+        local look = free.boardPart.CFrame.LookVector
+        local closer = free.boardPart.Position + (-look) * 1.6
+        closer = Vector3.new(closer.X, free.boardPart.Position.Y - 1.2, closer.Z)
+        local adj = TweenService:Create(currentPlatform, TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            CFrame = CFrame.new(closer.X, closer.Y - 4.3, closer.Z)
+        })
+        adj:Play()
+        adj.Completed:Wait()
+    end
+
+    CleanApartmentForFarm(free.apt, free.aptFolder, free.board, free.boardPart)
+    ClearBlockersNear(free.boardPos, 14)
+    StartLookAt(free.boardPos)
+    task.wait(0.35)
+
+    SetStatus("Comprando departamento...")
+    for _ = 1, 8 do
+        if not AutoMS then return false end
+        if FindOwnedApartment() then break end
+        FireBoardPrompt(free.board, free.boardPart)
+        task.wait(0.7)
+    end
+
+    local bought = FindOwnedApartment() ~= nil
+    SetStatus(bought and "Departamento comprado!" or "No se pudo comprar")
+    task.wait(0.5)
+    return bought
+end
+
+local function PlaceUnderPot(farmPot)
+    local potPart = GetPotPart(farmPot)
+    if not potPart then return end
+    if not EnsurePlatform() then return end
+    local underPos = potPart.Position - Vector3.new(0, UNDER_POT_OFFSET, 0)
+    SetStatus("Colocando debajo de la olla...")
+    local tw = TweenService:Create(currentPlatform, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        CFrame = CFrame.new(underPos.X, underPos.Y - 4.3, underPos.Z)
+    })
+    tw:Play()
+    tw.Completed:Wait()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then hrp.CFrame = CFrame.new(underPos) end
+    StartLookAt(potPart.Position)
+    EnlargePotPrompt(farmPot)
+end
+
+local function GoToOwnedCookingPot()
+    local apt, aptName, aptFolder = FindOwnedApartment()
+    if not apt then
+        SetStatus("Sin depa — comprando...")
+        if not BuyApartmentWithPot() then return false end
+        apt, aptName, aptFolder = FindOwnedApartment()
+        if not apt then return false end
+    end
+
+    local pots = GetCookingPots(apt)
+    if #pots == 0 and aptFolder then pots = GetCookingPots(aptFolder) end
+    local farmPot = pots[1]
+    if not farmPot then
+        SetStatus("No se encontro Cooking Pot")
+        return false
+    end
+    if #pots > 1 then
+        for i = 2, #pots do pcall(function() pots[i]:Destroy() end) end
+        farmPot = pots[1]
+    end
+
+    ClearAroundPot(apt, farmPot, 16)
+    local underCF = GetUnderPotCFrame(farmPot)
+    if not underCF then return false end
+
+    SetStatus("Yendo al depa (" .. tostring(aptName) .. ")...")
+    local ok = SlowTravelUnderMap(underCF, "Viajando debajo de la olla...", 25, 4.5)
+    if not ok then return false end
+    if not AutoMS then return false end
+
+    if not farmPot.Parent then
+        local left = GetCookingPots(apt)
+        if #left == 0 and aptFolder then left = GetCookingPots(aptFolder) end
+        farmPot = left[1]
+    end
+    if not farmPot then return false end
+
+    ClearAroundPot(apt, farmPot, 16)
+    PlaceUnderPot(farmPot)
+    SetStatus("Debajo de la olla")
+    return true, farmPot
+end
+
+-- ==================== UTILS ====================
+local spinConnection
+local function ToggleSpinBot(state)
+    spinBot = state
+    if spinConnection then spinConnection:Disconnect() spinConnection = nil end
+    if spinBot then
+        spinConnection = RunService.RenderStepped:Connect(function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(spinSpeed * 0.6), 0)
+            end
+        end)
+    end
+end
+
+local function ApplyStretch(value)
+    stretchValue = math.clamp(math.floor(value), 30, 100)
+    if stretchConnection then stretchConnection:Disconnect() stretchConnection = nil end
+    if not stretchOn or stretchValue >= 100 then return end
+    local mul = stretchValue / 100
+    stretchConnection = RunService.RenderStepped:Connect(function()
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local cf = cam.CFrame
+        cam.CFrame = CFrame.fromMatrix(cf.Position, cf.RightVector, cf.UpVector * mul, -cf.LookVector)
+    end)
+end
+
+local function CanDelete(obj)
+    if not obj or not obj.Parent then return false end
+    if IsProtectedObject(obj) then return false end
+    if obj.Size and obj.Size.X > 250 and obj.Size.Z > 250 then return false end
+    if obj.Position and obj.Position.Y < -30 then return false end
+    return obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation")
+end
+
+local function CreateHighlight()
+    if highlight then highlight:Destroy() end
+    highlight = Instance.new("SelectionBox")
+    highlight.LineThickness = 0.05
+    highlight.Color3 = Color3.fromRGB(168, 85, 247)
+    highlight.Transparency = 0.5
+    highlight.Parent = CoreGui
+end
+
+RunService.RenderStepped:Connect(function()
+    if not deleteMode then
+        if highlight then highlight.Adornee = nil end
+        return
+    end
+    local target = mouse.Target
+    if target and CanDelete(target) then
+        if not highlight then CreateHighlight() end
+        highlight.Adornee = target
+    else
+        if highlight then highlight.Adornee = nil end
+    end
+end)
+
+if isMobile then
+    UserInputService.InputBegan:Connect(function(input, processed)
+        if not deleteMode or processed then return end
+        if input.UserInputType == Enum.UserInputType.Touch then
+            task.wait(0.03)
+            local target = mouse.Target
+            if target and CanDelete(target) then
+                table.insert(deletedObjects, {
+                    object = target, parent = target.Parent, cframe = target.CFrame,
+                    size = target.Size, color = target.Color, transparency = target.Transparency,
+                    cancollide = target.CanCollide, anchored = target.Anchored
+                })
+                target.Parent = nil
+            end
+        end
+    end)
+else
+    mouse.Button1Down:Connect(function()
+        if not deleteMode then return end
+        if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) or UserInputService:IsKeyDown(Enum.KeyCode.RightAlt)) then return end
+        local target = mouse.Target
+        if target and CanDelete(target) then
+            table.insert(deletedObjects, {
+                object = target, parent = target.Parent, cframe = target.CFrame,
+                size = target.Size, color = target.Color, transparency = target.Transparency,
+                cancollide = target.CanCollide, anchored = target.Anchored
+            })
+            target.Parent = nil
+        end
+    end)
+end
+
+-- ==================== AUTO MS LOOP ====================
+local function StartAutoMS()
+    if AutoMS then return end
+    AutoMS = true
+    FarmStartTime = tick()
+    ApproxStartTime = 0
+    ApproxActive = false
+    SetStatus("Iniciando...")
+    task.spawn(function()
+        local firstCycle = true
+
+        while AutoMS do
+            local okCycle, errCycle = pcall(function()
+                if firstCycle then
+                    if not FindOwnedApartment() then
+                        local free = FindFreeCompactWalkup()
+                        if not free then
+                            SetStatus("Depas Llenos")
+                            AutoMS = false
+                            return
+                        end
+                        SetStatus("Sin depa — comprando...")
+                        if not BuyApartmentWithPot() then
+                            task.wait(2)
+                            return
+                        end
+                    end
+                    if not AutoMS then return end
+
+                    if not SlowTravelUnderMap(ShopPosition, "Yendo a tienda...", 25, 4.5) then
+                        if not AutoMS then return end
+                        task.wait(1)
+                        return
+                    end
+                    if not AutoMS then return end
+                    DestroyPlatform()
+                    ClearBlockersNear(ShopPosition.Position, SHOP_CLEAR_RADIUS)
+                    task.wait(0.3)
+                    if not AutoMS then return end
+
+                    if not AutoBuyIngredients(farmAmount) then
+                        SetStatus("Fallo compra — reintentando...")
+                        task.wait(1.5)
+                        return
+                    end
+                    if not AutoMS then return end
+                    firstCycle = false
+                end
+
+                local ok, farmPot = GoToOwnedCookingPot()
+                if not ok then
+                    SetStatus("Fallo depa — reintentando...")
+                    task.wait(1.5)
+                    return
+                end
+                if not AutoMS then return end
+
+                local potPart = farmPot and GetPotPart(farmPot)
+                if potPart then StartLookAt(potPart.Position) end
+                EnlargePotPrompt(farmPot)
+
+                while AutoMS do
+                    CheckLimitCash()
+                    if HasNoIngredients() then break end
+                    if potPart and potPart.Parent then
+                        ClearAroundPot(nil, farmPot, 14)
+                        PlaceUnderPot(farmPot)
+                        StartLookAt(potPart.Position)
+                        EnlargePotPrompt(farmPot)
+                    elseif farmPot and farmPot.Parent then
+                        potPart = GetPotPart(farmPot)
+                    end
+
+                    SetStatus("Poniendo Water...")
+                    local usedWater = EquipAndUse2Times("Water")
+                    -- Approximate time starts on first water in pot
+                    if usedWater and not ApproxActive then
+                        ApproxActive = true
+                        ApproxStartTime = tick()
+                    end
+                    if not AutoMS then break end
+                    GoDownAndUp(18)
+                    if not AutoMS then break end
+                    PlaceUnderPot(farmPot)
+                    if potPart then StartLookAt(potPart.Position) end
+                    SetStatus("Poniendo Sugar...")
+                    EquipAndUse2Times("Sugar Block Bag")
+                    if not AutoMS then break end
+                    task.wait(1.3)
+                    if not AutoMS then break end
+                    SetStatus("Poniendo Gelatin...")
+                    EquipAndUse2Times("Gelatin")
+                    if not AutoMS then break end
+                    GoDownAndUp(43)
+                    if not AutoMS then break end
+                    PlaceUnderPot(farmPot)
+                    if potPart then StartLookAt(potPart.Position) end
+                    SetStatus("Usando Empty Bag...")
+                    local empty = GetTool("Empty Bag") or GetTool("Empty") or GetTool("Bag")
+                    if empty then EquipAndUse2Times(empty.Name) end
+                    SetStatus("Ciclo olla...")
+                    task.wait(1.0)
+                end
+                if not AutoMS then return end
+
+                local boughtAgain = FinishFarmAndSell()
+                if not AutoMS then return end
+                if not boughtAgain then
+                    SetStatus("No se pudo comprar, reintentando...")
+                    task.wait(1.5)
+                    return
+                end
+                SetStatus("Yendo al depa despues de comprar...")
+                task.wait(0.3)
+            end)
+
+            if not okCycle then
+                SetStatus("Error ciclo — reintentando...")
+                pcall(DestroyPlatform)
+                task.wait(1.5)
+            end
+            if not AutoMS then break end
+            if CurrentStatus == "Depas Llenos" then break end
+        end
+
+        StopLookAt()
+        if isProtecting and currentPlatform then ForceGoUp() end
+        if CurrentStatus ~= "Depas Llenos" then SetStatus("Detenido") end
+    end)
+end
+
+local function StopAutoMS()
+    if not AutoMS then return end
+    AutoMS = false
+    StopLookAt()
+    if FarmStartTime > 0 then
+        AccumulatedTime = AccumulatedTime + (tick() - FarmStartTime)
+    end
+    ApproxActive = false
+    SetStatus("Deteniendo...")
+    task.spawn(function()
+        if isProtecting and currentPlatform then ForceGoUp() else SetStatus("Detenido") end
+    end)
+end
+
+-- ==================== STATUS OVERLAY ====================
+local StatusGui = nil
+local StatusVisible = false
+
+local function DestroyStatusGui()
+    if StatusGui then
+        pcall(function() StatusGui:Destroy() end)
+        StatusGui = nil
+    end
+    StatusVisible = false
+end
+
+local function CreateStatusGui()
+    DestroyStatusGui()
+    StatusVisible = true
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "GravityHubStatus"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() gui.Parent = CoreGui end)
+    if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    StatusGui = gui
+
+    local frame = Instance.new("Frame")
+    frame.Name = "Panel"
+    frame.Size = UDim2.new(0, 220, 0, 130)
+    frame.Position = UDim2.new(0, 20, 0.35, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
+    frame.BackgroundTransparency = 0.15
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(168, 85, 247)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, -50, 0, 24)
+    title.Position = UDim2.new(0, 10, 0, 6)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Text = "Status"
+    title.Parent = frame
+
+    local circle = Instance.new("Frame")
+    circle.Name = "Circle"
+    circle.Size = UDim2.new(0, 10, 0, 10)
+    circle.Position = UDim2.new(1, -40, 0, 12)
+    circle.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+    circle.BorderSizePixel = 0
+    circle.Parent = frame
+    local cc = Instance.new("UICorner")
+    cc.CornerRadius = UDim.new(1, 0)
+    cc.Parent = circle
+
+    local stateLbl = Instance.new("TextLabel")
+    stateLbl.Name = "State"
+    stateLbl.Size = UDim2.new(0, 55, 0, 20)
+    stateLbl.Position = UDim2.new(1, -95, 0, 7)
+    stateLbl.BackgroundTransparency = 1
+    stateLbl.Font = Enum.Font.Gotham
+    stateLbl.TextSize = 11
+    stateLbl.TextColor3 = Color3.fromRGB(220, 50, 50)
+    stateLbl.TextXAlignment = Enum.TextXAlignment.Right
+    stateLbl.Text = "disabled"
+    stateLbl.Parent = frame
+
+    local function makeLine(name, y, text)
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = name
+        lbl.Size = UDim2.new(1, -20, 0, 18)
+        lbl.Position = UDim2.new(0, 10, 0, y)
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Text = text
+        lbl.Parent = frame
+        return lbl
+    end
+
+    local LblMoneyBefore = makeLine("MoneyBefore", 32, "money before : $" .. tostring(MoneyBefore))
+    local LblAllMs = makeLine("AllMs", 52, "all ms : 0")
+    local LblTotalTime = makeLine("TotalTime", 72, "total time : 0s")
+    local LblApprox = makeLine("Approx", 92, "approximate time : --")
+
+    -- drag
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    frame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    task.spawn(function()
+        while StatusGui and StatusGui.Parent do
+            pcall(function()
+                local water = GetToolCount("Water")
+                local sugar = GetToolCount("Sugar Block Bag")
+                local gelatin = GetToolCount("Gelatin")
+                local allMs = math.min(water, sugar, gelatin)
+
+                LblMoneyBefore.Text = "money before : $" .. tostring(MoneyBefore)
+                LblAllMs.Text = "all ms : " .. tostring(allMs)
+
+                local totalSec = AccumulatedTime
+                if AutoMS and FarmStartTime > 0 then
+                    totalSec = AccumulatedTime + (tick() - FarmStartTime)
+                end
+                LblTotalTime.Text = "total time : " .. FormatTime(totalSec)
+
+                -- approximate time starts only after first water in pot
+                if ApproxActive and ApproxStartTime > 0 then
+                    local totalApprox = farmAmount * SECONDS_PER_UNIT
+                    local elapsed = tick() - ApproxStartTime
+                    local remaining = math.max(0, totalApprox - elapsed)
+                    LblApprox.Text = "approximate time : " .. FormatTime(remaining)
+                else
+                    local totalApprox = farmAmount * SECONDS_PER_UNIT
+                    LblApprox.Text = "approximate time : " .. FormatTime(totalApprox)
+                end
+
+                if AutoMS then
+                    circle.BackgroundColor3 = Color3.fromRGB(50, 220, 90)
+                    stateLbl.TextColor3 = Color3.fromRGB(50, 220, 90)
+                    stateLbl.Text = "active"
+                else
+                    circle.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+                    stateLbl.TextColor3 = Color3.fromRGB(220, 50, 50)
+                    stateLbl.Text = "disabled"
+                end
+            end)
+            task.wait(0.25)
+        end
+    end)
+end
+
+local function SetStatusVisible(on)
+    if on then
+        CreateStatusGui()
+    else
+        DestroyStatusGui()
+    end
+end
+
+-- ==================== FREE SCRIPT BANNER (PURPLE) ====================
+task.spawn(function()
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "GravityHubBanner"
+    sg.ResetOnSpawn = false
+    pcall(function() sg.Parent = CoreGui end)
+    if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 28)
+    lbl.Position = UDim2.new(0, 0, 0, 8)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 15
+    lbl.TextColor3 = Color3.fromRGB(190, 140, 255) -- purple
+    lbl.TextStrokeTransparency = 0.4
+    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    lbl.Text = "GravityHub | Este script es gratis, si ves a algun skid vendiendolo, no se lo compres!"
+    lbl.Parent = sg
+
+    task.wait(8)
+    pcall(function() sg:Destroy() end)
+end)
+
+-- ==================== UI ====================
+local function Notify(title, desc, duration)
+    pcall(function()
+        Library:Notification({
+            Name = title or "GravityHub",
+            Description = desc or "",
+            Duration = duration or 3,
+        })
+    end)
+end
+
+local IconFarm = Library:GetImage("USDChip") or Library:GetImage("ShoppingCart") or "rbxassetid://10723407389"
+local IconUtils = Library:GetImage("Wrench") or Library:GetImage("Tune") or "rbxassetid://10734952467"
+local IconSettings = Library:GetImage("MultipleCogs") or Library:GetImage("Tune") or "rbxassetid://10734950828"
+
+local AccentPurple = Color3.fromRGB(190, 140, 255)
+pcall(function()
+    Library.Theme.Accent = AccentPurple
+    Library:ChangeTheme("Accent", AccentPurple)
+    Library.Theme.Image = Color3.fromRGB(190, 140, 255)
+    Library:ChangeTheme("Image", Color3.fromRGB(190, 140, 255))
+end)
+
+local Window = Library:Window({
+    Name = '<font color="rgb(255,255,255)">Gravity</font><font color="rgb(190,140,255)">Hub</font> | South Bronx',
+    Version = "v1.0",
+    Logo = "74508977851216",
+})
+
+-- FARM
+local FarmPage = Window:Page({
+    Name = "Farm",
+    Icon = IconFarm,
+    SubPages = true,
+})
+
+local FarmSub = FarmPage:SubPage({
+    Name = "AutoFarm",
+    Icon = IconFarm,
+    Columns = 2,
+})
+
+local AutoCard = FarmSub:Section({ Name = "Auto MS", Side = 1, Icon = IconFarm })
+AutoCard:Toggle({
+    Name = "Auto Marshmallow",
+    Flag = "GH_AutoMS",
+    Default = false,
+    Callback = function(state)
+        if state then StartAutoMS() else StopAutoMS() end
+    end,
+})
+AutoCard:Toggle({
+    Name = "Show status on screen",
+    Flag = "GH_ShowStatus",
+    Default = false,
+    Callback = function(state)
+        SetStatusVisible(state)
+    end,
+})
+AutoCard:Slider({
+    Name = "Cantidad de compra",
+    Flag = "GH_FarmAmount",
+    Min = 1,
+    Max = 50,
+    Default = 1,
+    Decimals = 1,
+    Callback = function(val)
+        farmAmount = math.clamp(math.floor(val), 1, 50)
+        pcall(function()
+            if LblCosto and LblCosto.SetText then
+                LblCosto:SetText("Costo $" .. tostring(farmAmount * COST_PER_CYCLE))
+            end
+            if LblFarmCfg and LblFarmCfg.SetText then
+                LblFarmCfg:SetText("Farmeo : " .. tostring(farmAmount) .. " ($" .. tostring(farmAmount * COST_PER_CYCLE) .. ")")
+            end
+        end)
+    end,
+})
+local LblCosto = AutoCard:Label("Costo $190")
+
+local CashCard = FarmSub:Section({ Name = "Limit Cash", Side = 1, Icon = IconFarm })
+CashCard:Toggle({
+    Name = "Limite de dinero",
+    Flag = "GH_LimitCash",
+    Default = false,
+    Callback = function(state)
+        limitCashOn = state
+        if limitCashOn then CheckLimitCash() end
+    end,
+})
+CashCard:Slider({
+    Name = "Cash objetivo",
+    Flag = "GH_LimitAmount",
+    Min = MIN_CASH,
+    Max = MAX_CASH,
+    Default = 25000,
+    Decimals = 1,
+    Callback = function(val)
+        limitCashAmount = math.clamp(math.floor(val), MIN_CASH, MAX_CASH)
+        if limitCashOn then CheckLimitCash() end
+    end,
+})
+CashCard:Textbox({
+    Name = "Escribir cash objetivo",
+    Flag = "GH_LimitText",
+    Placeholder = "ej: 50000",
+    Callback = function(text)
+        local n = tonumber((tostring(text or ""):gsub("[^%d]", "")))
+        if n then
+            limitCashAmount = math.clamp(math.floor(n), MIN_CASH, MAX_CASH)
+            if limitCashOn then CheckLimitCash() end
+        end
+    end,
+})
+
+local IngCard = FarmSub:Section({ Name = "Ingredientes / Bolsas", Side = 2, Icon = IconFarm })
+local LblWater = IngCard:Label("Water : 0")
+local LblSugar = IngCard:Label("Sugar : 0")
+local LblGelatin = IngCard:Label("Gelatin : 0")
+local LblSmall = IngCard:Label("Small $1470 : 0")
+local LblMedium = IngCard:Label("Medium $2840 : 0")
+local LblLarge = IngCard:Label("Large $4150 : 0")
+
+local MoneyCard = FarmSub:Section({ Name = "Dinero / Status", Side = 2, Icon = IconFarm })
+local LblCounter = MoneyCard:Label("Counter $ : 0")
+local LblMade = MoneyCard:Label("Hecho $ : 0")
+local LblFarmCfg = MoneyCard:Label("Farmeo : 1 ($190)")
+local LblLimitCfg = MoneyCard:Label("Limite : $25000")
+local LblEstado = MoneyCard:Label("Estado : Esperando...")
+local LblApproxUi = MoneyCard:Label("tiempo estimado : 1m 9s")
+
+task.spawn(function()
+    while true do
+        pcall(function()
+            local water = GetToolCount("Water")
+            local sugar = GetToolCount("Sugar Block Bag")
+            local gelatin = GetToolCount("Gelatin")
+            local small = GetToolCount("Small Marshmallow Bag")
+            local medium = GetToolCount("Medium Marshmallow Bag")
+            local large = GetToolCount("Large Marshmallow Bag")
+            local bagMoney = (small * 1470) + (medium * 2840) + (large * 4150)
+
+            if LblWater and LblWater.SetText then LblWater:SetText("Water : " .. water) end
+            if LblSugar and LblSugar.SetText then LblSugar:SetText("Sugar : " .. sugar) end
+            if LblGelatin and LblGelatin.SetText then LblGelatin:SetText("Gelatin : " .. gelatin) end
+            if LblSmall and LblSmall.SetText then LblSmall:SetText("Small $1470 : " .. small) end
+            if LblMedium and LblMedium.SetText then LblMedium:SetText("Medium $2840 : " .. medium) end
+            if LblLarge and LblLarge.SetText then LblLarge:SetText("Large $4150 : " .. large) end
+            if LblCounter and LblCounter.SetText then LblCounter:SetText("Counter $ : " .. bagMoney) end
+            if LblMade and LblMade.SetText then LblMade:SetText("Hecho $ : " .. TotalMoneyMade) end
+            if LblCosto and LblCosto.SetText then
+                LblCosto:SetText("Costo $" .. tostring(farmAmount * COST_PER_CYCLE))
+            end
+            if LblFarmCfg and LblFarmCfg.SetText then
+                LblFarmCfg:SetText("Farmeo : " .. tostring(farmAmount) .. " ($" .. tostring(farmAmount * COST_PER_CYCLE) .. ")")
+            end
+            if LblLimitCfg and LblLimitCfg.SetText then
+                LblLimitCfg:SetText("Limite : $" .. tostring(limitCashAmount))
+            end
+            if LblEstado and LblEstado.SetText then
+                LblEstado:SetText("Estado : " .. tostring(CurrentStatus))
+            end
+            if LblApproxUi and LblApproxUi.SetText then
+                if ApproxActive and ApproxStartTime > 0 then
+                    local totalApprox = farmAmount * SECONDS_PER_UNIT
+                    local remaining = math.max(0, totalApprox - (tick() - ApproxStartTime))
+                    LblApproxUi:SetText("tiempo estimado : " .. FormatTime(remaining))
+                else
+                    LblApproxUi:SetText("tiempo estimado : " .. FormatTime(farmAmount * SECONDS_PER_UNIT))
+                end
+            end
+        end)
+        task.wait(0.25)
+    end
+end)
+
+-- UTILS
+local UtilsPage = Window:Page({
+    Name = "Utils",
+    Icon = IconUtils,
+    SubPages = true,
+})
+
+local UtilsSub = UtilsPage:SubPage({
+    Name = "Utils",
+    Icon = IconUtils,
+    Columns = 2,
+})
+
+local MoveCard = UtilsSub:Section({ Name = "Movement", Side = 1, Icon = IconUtils })
+MoveCard:Toggle({
+    Name = "Spin Bot",
+    Flag = "GH_Spin",
+    Default = false,
+    Callback = function(state)
+        ToggleSpinBot(state)
+    end,
+})
+MoveCard:Slider({
+    Name = "Spin Speed",
+    Flag = "GH_SpinSpeed",
+    Min = 1,
+    Max = 100,
+    Default = 50,
+    Decimals = 1,
+    Callback = function(val)
+        spinSpeed = math.clamp(math.floor(val), 1, 100)
+    end,
+})
+MoveCard:Toggle({
+    Name = "Stretch Resolution",
+    Flag = "GH_Stretch",
+    Default = false,
+    Callback = function(state)
+        stretchOn = state
+        if stretchOn then
+            ApplyStretch(stretchValue)
+        else
+            if stretchConnection then
+                stretchConnection:Disconnect()
+                stretchConnection = nil
+            end
+        end
+    end,
+})
+MoveCard:Slider({
+    Name = "Stretch Value",
+    Flag = "GH_StretchVal",
+    Min = 30,
+    Max = 100,
+    Default = 100,
+    Decimals = 1,
+    Callback = function(val)
+        stretchValue = math.clamp(math.floor(val), 30, 100)
+        if stretchOn then ApplyStretch(stretchValue) end
+    end,
+})
+
+local DeleteCard = UtilsSub:Section({ Name = "Delete", Side = 2, Icon = IconUtils })
+DeleteCard:Toggle({
+    Name = "Delete Mode",
+    Flag = "GH_Delete",
+    Default = false,
+    Callback = function(state)
+        deleteMode = state
+    end,
+})
+DeleteCard:Button({
+    Name = "Restablecer ultimo",
+    Callback = function()
+        if #deletedObjects > 0 then
+            local last = table.remove(deletedObjects)
+            if last and last.object then
+                pcall(function()
+                    last.object.Parent = last.parent
+                    last.object.CFrame = last.cframe
+                    last.object.Size = last.size
+                    last.object.Color = last.color
+                    last.object.Transparency = last.transparency
+                    last.object.CanCollide = last.cancollide
+                    last.object.Anchored = last.anchored
+                end)
+            end
+            Notify("Restore", "Restaurado (" .. #deletedObjects .. ")", 2)
+        else
+            Notify("Restore", "Nada que restaurar", 2)
+        end
+    end,
+})
+
+-- SETTINGS
+local SettingsPage = Window:Page({
+    Name = "Settings",
+    Icon = IconSettings,
+    SubPages = true,
+})
+
+local SettingsSub = SettingsPage:SubPage({
+    Name = "Settings",
+    Icon = IconSettings,
+    Columns = 2,
+})
+
+local DiscordCard = SettingsSub:Section({ Name = "Discord", Side = 1, Icon = IconSettings })
+DiscordCard:Button({
+    Name = "Copiar invite Discord",
+    Callback = function()
+        local ok = pcall(function()
+            if setclipboard then
+                setclipboard(DISCORD_INVITE)
+            elseif toclipboard then
+                toclipboard(DISCORD_INVITE)
+            end
+        end)
+        Notify("Discord", ok and ("Invite copiado: " .. DISCORD_INVITE) or DISCORD_INVITE, 4)
+    end,
+})
+DiscordCard:Label(DISCORD_INVITE)
+
+local InfoCard = SettingsSub:Section({ Name = "Info", Side = 2, Icon = IconSettings })
+InfoCard:Label("GravityHub + Valary UI")
+InfoCard:Label("Menu : tecla Z")
+InfoCard:Button({
+    Name = "Unload UI",
+    Callback = function()
+        StopAutoMS()
+        DestroyStatusGui()
+        pcall(function() Library:Unload() end)
+    end,
+})
+
+Library:Init()
+Notify("GravityHub", "Cargado con Valary UI", 4)
+print("[GravityHub] UI lista — abre con Z")
