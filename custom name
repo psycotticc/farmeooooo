@@ -1,0 +1,92 @@
+-- Cargar la librería Valary
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/psycotticc/farmeooooo/refs/heads/main/library%20valary"))()
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Función que cambia el texto (igual que en Dex)
+local function SetLabelText(pathType, newText)
+    pcall(function()
+        local characterFolder = workspace:FindFirstChild("Characters")
+        if not characterFolder then return end
+
+        local playerChar = characterFolder:FindFirstChild(LocalPlayer.Name)
+        if not playerChar then return end
+
+        local head = playerChar:FindFirstChild("Head")
+        if not head then return end
+
+        if pathType == "Rank" then
+            local rankTag = head:FindFirstChild("RankTag")
+            if rankTag and rankTag:FindFirstChild("MainFrame") then
+                local nameLabel = rankTag.MainFrame:FindFirstChild("NameLabel")
+                if nameLabel and nameLabel:IsA("TextLabel") then
+                    nameLabel.Text = newText
+                end
+            end
+        elseif pathType == "Name" then
+            local nameTag = head:FindFirstChild("NameTag")
+            if nameTag and nameTag:FindFirstChild("MainFrame") then
+                local nameLabel = nameTag.MainFrame:FindFirstChild("NameLabel")
+                if nameLabel and nameLabel:IsA("TextLabel") then
+                    nameLabel.Text = newText
+                end
+            end
+        end
+    end)
+end
+
+-- Crear menú
+local Window = Library:Window({
+    Name = "NameTag Changer",
+    Version = "v1.0",
+})
+
+local MainPage = Window:Page({
+    Name = "Main",
+})
+
+local Section = MainPage:Section({
+    Name = "Cambiar Textos",
+    Side = 1
+})
+
+-- Textbox para RankTag
+Section:Textbox({
+    Name = "RankTag Text",
+    Placeholder = "Escribe el rank y presiona Enter",
+    Flag = "RankText",
+    Callback = function(text)
+        if text and text ~= "" then
+            SetLabelText("Rank", text)
+            Library:Notification({
+                Name = "Rank cambiado",
+                Description = "Nuevo texto: " .. text,
+                Duration = 3
+            })
+        end
+    end
+})
+
+-- Textbox para NameTag
+Section:Textbox({
+    Name = "NameTag Text",
+    Placeholder = "Escribe el nombre y presiona Enter",
+    Flag = "NameText",
+    Callback = function(text)
+        if text and text ~= "" then
+            SetLabelText("Name", text)
+            Library:Notification({
+                Name = "Nombre cambiado",
+                Description = "Nuevo texto: " .. text,
+                Duration = 3
+            })
+        end
+    end
+})
+
+Library:Notification({
+    Name = "Listo",
+    Description = "Escribe el texto y presiona Enter en el Textbox.",
+    Duration = 4
+})
