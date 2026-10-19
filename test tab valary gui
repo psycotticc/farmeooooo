@@ -787,109 +787,18 @@ do -- Library
     end
 
     local Themes = {
-        ["Old Default"] = {
-            ["Background"] = FromRGB(16, 18, 21),
-            ["Inline"] = FromRGB(22, 25, 29),
+        ["Preset"] = {
+            ["Background"] = FromRGB(14, 14, 16),
+            ["Inline"] = FromRGB(22, 22, 24),
             ["Shadow"] = FromRGB(0, 0, 0),
             ["Text"] = FromRGB(255, 255, 255),
             ["Image"] = FromRGB(255, 255, 255),
             ["Dark Gradient"] = FromRGB(211, 211, 211),
-            ["Inactive Text"] = FromRGB(185, 185, 185),
-            ["Element"] = FromRGB(34, 39, 45),
-            ["Accent"] = FromRGB(196, 231, 255),
-            ["Border"] = FromRGB(32, 36, 42)
-        },
-
-        ["Preset"] = {
-            ["Background"] = FromRGB(14, 14, 16),       -- Darker background
-            ["Inline"] = FromRGB(22, 22, 24),           -- Slightly lighter inline panels
-            ["Shadow"] = FromRGB(0, 0, 0),              -- Keep strong shadow
-            ["Text"] = FromRGB(255, 255, 255),          -- Bright white text
-            ["Image"] = FromRGB(255, 255, 255),         -- White icons/images
-            ["Dark Gradient"] = FromRGB(211, 211, 211),    -- Subtle dark gradient
-            ["Inactive Text"] = FromRGB(150, 150, 150), -- Softer gray for inactive text
-            ["Element"] = FromRGB(33, 32, 35),          -- Element background matches panel
-            ["Accent"] = FromRGB(236,23,23),          -- Blue accent (like "bronx")
-            ["Border"] = FromRGB(40, 44, 52)            -- Slightly lighter border for contrast
-        },
-
-        ["Bitch Bot"] = {
-            ["Background"] = FromRGB(42, 42, 42),      -- from #2a2a2a
-            ["Inline"] = FromRGB(30, 30, 30),          -- from #1e1e1e
-            ["Shadow"] = FromRGB(20, 20, 20),          -- from #141414
-            ["Text"] = FromRGB(255, 255, 255),         -- from #ffffff
-            ["Image"] = FromRGB(255, 255, 255),         -- from #7e48a3
-            ["Dark Gradient"] = FromRGB(195, 195, 195),-- from #c3c3c3
-            ["Inactive Text"] = FromRGB(180, 180, 180),-- from #b4b4b4
-            ["Element"] = FromRGB(52, 52, 52),         -- from #343434
-            ["Accent"] = FromRGB(126, 72, 163),        -- from #7e48a3
-            ["Border"] = FromRGB(20, 20, 20)           -- from #141414
-        },
-
-        ["Roobet"] = {
-            ["Background"] = Color3.fromRGB(18, 20, 32),      -- Dark purple base
-            ["Inline"] = Color3.fromRGB(32, 34, 54),          -- Slightly lighter panel purple
-            ["Shadow"] = Color3.fromRGB(0, 0, 0),             -- Black shadow
-            ["Text"] = Color3.fromRGB(255, 255, 255),         -- White text
-            ["Image"] = Color3.fromRGB(255, 255, 255),        -- White icons
-            ["Dark Gradient"] = Color3.fromRGB(211, 211, 211),   -- Deeper gradient shade
-            ["Inactive Text"] = Color3.fromRGB(160, 160, 180),-- Muted gray-purple text
-            ["Element"] = Color3.fromRGB(40, 42, 70),         -- Button/element background
-            ["Accent"] = Color3.fromRGB(255, 204, 0),         -- Roobet yellow accent (#FFCC00)
-            ["Border"] = Color3.fromRGB(50, 52, 80)           -- Subtle purple borders
-        };
-
-        ["Twitch"] = {
-            ["Background"] = Color3.fromRGB(20, 20, 25),
-            ["Inline"] = Color3.fromRGB(30, 30, 40),
-            ["Shadow"] = Color3.fromRGB(0, 0, 0),
-            ["Text"] = Color3.fromRGB(255, 255, 255),
-            ["Image"] = Color3.fromRGB(255, 255, 255),
-            ["Dark Gradient"] = Color3.fromRGB(211, 211, 211),
-            ["Inactive Text"] = Color3.fromRGB(170, 170, 180),
-            ["Element"] = Color3.fromRGB(40, 40, 60),
-            ["Accent"] = Color3.fromRGB(142, 91, 218), -- Twitch purple
-            ["Border"] = Color3.fromRGB(60, 60, 90)
-        },
-
-        ["Halloween"] = {
-            ["Background"] = FromRGB(11, 10, 9),
-            ["Inline"] = FromRGB(23, 18, 16),
-            ["Shadow"] = FromRGB(253, 133, 21),
-            ["Text"] = FromRGB(198, 198, 198),
-            ["Image"] = FromRGB(201, 201, 201),
-            ["Dark Gradient"] = FromRGB(211, 202, 195),
-            ["Inactive Text"] = FromRGB(179, 179, 179),
-            ["Element"] = FromRGB(42, 32, 26),
-            ["Accent"] = FromRGB(253, 133, 21),
-            ["Border"] = FromRGB(42, 35, 32)
-        },
-
-        ["Aqua"] = {
-            ["Background"] = FromRGB(19, 21, 23),
-            ["Inline"] = FromRGB(31, 35, 39),
-            ["Shadow"] = FromRGB(0, 0, 0),
-            ["Text"] = FromRGB(245, 245, 245),
-            ["Image"] = FromRGB(255, 255, 255),
-            ["Dark Gradient"] = FromRGB(211, 211, 211),
-            ["Inactive Text"] = FromRGB(185, 185, 185),
-            ["Element"] = FromRGB(58, 66, 77),
-            ["Accent"] = FromRGB(31, 106, 181),
-            ["Border"] = FromRGB(48, 56, 63)
-        },
-
-        ["One Tap"] = {
-            ["Background"] = FromRGB(49, 49, 49),      -- from #313131
-            ["Inline"] = FromRGB(30, 30, 30),          -- from #1e1e1e
-            ["Shadow"] = FromRGB(0, 0, 0),             -- from #000000
-            ["Text"] = FromRGB(245, 245, 245),         -- from #f5f5f5
-            ["Image"] = FromRGB(255, 255, 255),        -- from #ffffff
-            ["Dark Gradient"] = FromRGB(211, 211, 211),-- from #d3d3d3
-            ["Inactive Text"] = FromRGB(185, 185, 185),-- from #b9b9b9
-            ["Element"] = FromRGB(24, 24, 24),         -- from #181818
-            ["Accent"] = FromRGB(237, 170, 0),         -- from #edaa00
-            ["Border"] = FromRGB(62, 62, 62)           -- from #3e3e3e
-        },
+            ["Inactive Text"] = FromRGB(150, 150, 150),
+            ["Element"] = FromRGB(33, 32, 35),
+            ["Accent"] = FromRGB(236,23,23),
+            ["Border"] = FromRGB(40, 44, 52)
+        }
     }
 
     Library.Theme = TableClone(Themes["Preset"])
@@ -6059,15 +5968,15 @@ do -- Library
                     Parent = Items["MainFrame"].Instance,
                     Name = "\0",
                     BorderColor3 = FromRGB(0, 0, 0),
-                    AnchorPoint = Vector2New(1, 0.5), -- 🔥
+                    AnchorPoint = Vector2New(1, 0.5), -- Anclado a la izquierda
                     BorderSizePixel = 0,
-                    Position = UDim2New(0, -15, 0.5, 0), -- 🔥 Afuera a la izquierda
-                    Size = UDim2New(0, 45, 0, 0),
+                    Position = UDim2New(0, -20, 0.5, 0), -- Fuera de la ventana
+                    Size = UDim2New(0, 50, 0, 0),
                     ZIndex = 2,
                     AutomaticSize = Enum.AutomaticSize.Y,
-                    BackgroundTransparency = 1, -- 🔥 Quitar el fondo negro
+                    BackgroundTransparency = 1, -- Sin cápsula negra
                     BackgroundColor3 = FromRGB(16, 18, 21)
-                })
+                })  Items["Pages"]:AddToTheme({BackgroundColor3 = "Background"})
 
                 Instances:Create("UICorner", {
                     Parent = Items["Pages"].Instance,
@@ -6093,12 +6002,13 @@ do -- Library
                     PaddingLeft = UDimNew(0, 8)
                 })
 
+                -- ORIENTACIÓN VERTICAL
                 Instances:Create("UIListLayout", {
                     Parent = Items["Holder"].Instance,
                     Name = "\0",
                     VerticalAlignment = Enum.VerticalAlignment.Center,
-                    FillDirection = Enum.FillDirection.Horizontal,
-                    Padding = UDimNew(0, 5),
+                    FillDirection = Enum.FillDirection.Vertical, -- Uno encima de otro
+                    Padding = UDimNew(0, 8), -- Separación
                     SortOrder = Enum.SortOrder.LayoutOrder
                 })
 
@@ -6653,29 +6563,30 @@ do -- Library
                     Text = "",
                     AutoButtonColor = false,
                     BackgroundTransparency = 1,
-                    Size = UDim2New(0, 40, 0, 40),
+                    Size = UDim2New(0, 40, 0, 40), -- CUADRADO PERFECTO
                     BorderSizePixel = 0,
                     ZIndex = 2,
                     TextSize = 14,
                     BackgroundColor3 = FromRGB(23, 26, 30)
                 })  Items["Inactive"]:AddToTheme({BackgroundColor3 = "Inline"})
 
-                Instances:Create("UICorner", {
-                    Parent = Items["Inactive"].Instance,
-                    Name = "\0",
-                    CornerRadius = UDimNew(1, 0)
-                })
+                -- Borramos el UICorner para que sea totalmente cuadrado
+                -- Instances:Create("UICorner", {
+                --     Parent = Items["Inactive"].Instance,
+                --     Name = "\0",
+                --     CornerRadius = UDimNew(1, 0)
+                -- })
 
                 Items["Icon"] = Instances:Create("ImageLabel", {
                     Parent = Items["Inactive"].Instance,
                     Name = "\0",
                     ImageTransparency = 0.5,
                     BorderColor3 = FromRGB(0, 0, 0),
-                    Size = UDim2New(0, 22, 0, 22),
-                    AnchorPoint = Vector2New(0, 0.5),
+                    Size = UDim2New(0, 24, 0, 24), -- ICONO MÁS GRANDE
+                    AnchorPoint = Vector2New(0.5, 0.5),
                     Image = Page.Icon,
                     BackgroundTransparency = 1,
-                    Position = UDim2New(0, 5, 0.5, 0),
+                    Position = UDim2New(0.5, 0, 0.5, 0), -- CENTRADO
                     ZIndex = 2,
                     BorderSizePixel = 0,
                     BackgroundColor3 = FromRGB(255, 255, 255)
@@ -6685,7 +6596,7 @@ do -- Library
                     Parent = Items["Inactive"].Instance,
                     Name = "\0",
                     FontFace = Library.Font,
-                    Visible = false,
+                    Visible = false, -- OCULTO SIEMPRE
                     Active = true,
                     AnchorPoint = Vector2New(0, 0.5),
                     ZIndex = 2,
@@ -6810,7 +6721,7 @@ do -- Library
 
                 if Bool then
                     Items["Text"].Instance.Visible = true 
-                    Items["Inactive"]:Tween(nil, {BackgroundTransparency = 1, Size = UDim2New(0, 40, 0, 40)})
+                    Items["Inactive"]:Tween(nil, {BackgroundTransparency = 0, Size = UDim2New(0, Items["Text"].Instance.TextBounds.X + 38, 0, 32)})
                     Items["Icon"]:ChangeItemTheme({ImageColor3 = "Accent"})
                     Items["Icon"]:Tween(nil, {ImageColor3 = Library.Theme.Accent, ImageTransparency = 0})
 
@@ -6917,7 +6828,7 @@ do -- Library
                     AutoButtonColor = false,
                     AutomaticSize = Enum.AutomaticSize.X,
                     BackgroundTransparency = 1,
-                    Size = UDim2New(0, 40, 0, 40),
+                    Size = UDim2New(0, 0, 0, 32),
                     BorderSizePixel = 0,
                     ZIndex = 2,
                     TextSize = 14,
@@ -7020,7 +6931,7 @@ do -- Library
 
                 if Bool then
                     Items["Text"].Instance.Visible = true 
-                    Items["Inactive"]:Tween(nil, {BackgroundTransparency = 1, Size = UDim2New(0, 40, 0, 40)})
+                    Items["Inactive"]:Tween(nil, {BackgroundTransparency = 0, Size = UDim2New(0, Items["Text"].Instance.TextBounds.X + 38, 0, 32)})
                     Items["Icon"]:ChangeItemTheme({ImageColor3 = "Accent"})
                     Items["Icon"]:Tween(nil, {ImageColor3 = Library.Theme.Accent, ImageTransparency = 0}) 
 
